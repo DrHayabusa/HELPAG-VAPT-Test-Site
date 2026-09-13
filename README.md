@@ -23,6 +23,9 @@ IIS URL Rewrite 2 and Application Request Routing are required. IIS listens on
 the lab port and reverse-proxies to a Waitress backend bound only to
 `127.0.0.1:5005`.
 
+For the complete server build, validation, firewall, troubleshooting, and
+stop/start procedure, follow [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md).
+
 ## Docker deployment
 
 ```bash
@@ -45,6 +48,7 @@ LAB_MODE=true .venv/bin/python app.py
 - `splunk/USE_CASES.md` — validation searches.
 - `splunk/TA-helpag-vapt` — field extraction and disabled saved searches.
 - `OWASP_TOP10_TEST_COMMANDS.md` — safe commands for every training use case.
+- `BURP_SUITE_TEST_GUIDE.md` — full manual Burp Repeater/Intruder procedure.
+- `TEST_RESULTS.md` — exact automated and live validation record completed here.
 
 The application refuses normal requests unless `LAB_MODE=true`.
-

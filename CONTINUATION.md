@@ -10,6 +10,8 @@ This file is the starting point for Claude Code, Codex, or another coding agent.
 - Application events are JSONL and optionally sent to Splunk HEC.
 - IIS and application log inputs plus Splunk saved searches are packaged.
 - Standalone unit tests live in `tests/test_app.py` and run in GitHub Actions.
+- `WINDOWS_IIS_DEPLOYMENT_GUIDE.md` is the end-to-end Windows Server handoff.
+- `BURP_SUITE_TEST_GUIDE.md` provides the complete manual Burp validation runbook.
 
 ## Verification commands
 
