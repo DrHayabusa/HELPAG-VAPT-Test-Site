@@ -9,8 +9,7 @@ This file is the starting point for Claude Code, Codex, or another coding agent.
 - IIS deployment uses ARR/URL Rewrite to proxy to Waitress on localhost.
 - Application events are JSONL and optionally sent to Splunk HEC.
 - IIS and application log inputs plus Splunk saved searches are packaged.
-- Unit tests live in the VAPT Agent repository until this directory is split
-  into its standalone repository.
+- Standalone unit tests live in `tests/test_app.py` and run in GitHub Actions.
 
 ## Verification commands
 
@@ -29,4 +28,3 @@ On Windows, run `iis/Install-IIS-LabSite.ps1`, execute every command in
 2. Add a Splunk dashboard XML after validating field names in the target lab.
 3. Sign release archives and publish checksums.
 4. Keep SSRF bounded to lab hostnames and never add command-execution examples.
-
