@@ -1,0 +1,39 @@
+services:
+  vulnerable-web:
+    build: .
+    environment:
+      LAB_MODE: "true"
+      LAB_HOST: "0.0.0.0"
+      LAB_PORT: "5005"
+      LAB_DATABASE: /app/logs/owasp_lab.db
+      LAB_EVENT_LOG: /app/logs/owasp-events.jsonl
+      SPLUNK_HEC_URL: ${SPLUNK_HEC_URL:-}
+      SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
+      SPLUNK_INDEX: ${SPLUNK_INDEX:-vapt_lab}
+      SPLUNK_SOURCETYPE: ${SPLUNK_SOURCETYPE:-helpag:owasp:json}
+      SPLUNK_VERIFY_TLS: ${SPLUNK_VERIFY_TLS:-false}
+    ports:
+      - "127.0.0.1:5005:5005"
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - metadata
+    networks:
+      - owasp-lab
+    restart: unless-stopped
+
+  metadata:
+    image: python:3.11-alpine
+    command: ["python", "-m", "http.server", "8080", "--directory", "/data"]
+    volumes:
+      - ./metadata:/data:ro
+    expose:
+      - "8080"
+    networks:
+      - owasp-lab
+    restart: unless-stopped
+
+networks:
+  owasp-lab:
+    name: helpag-owasp-lab
+

@@ -1,0 +1,13 @@
+# Copy to $SPLUNK_HOME\etc\system\local\inputs.conf on the IIS server.
+# Replace C:\Lab if the repository was cloned elsewhere.
+
+[monitor://C:\inetpub\logs\LogFiles\W3SVC*\u_ex*.log]
+disabled = 0
+index = vapt_lab
+sourcetype = iis
+
+[monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\owasp-events.jsonl]
+disabled = 0
+index = vapt_lab
+sourcetype = helpag:owasp:json
+
