@@ -43,6 +43,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             "method": request.method,
             "path": request.path,
             "user_agent": request.headers.get("User-Agent", ""),
+            "test_id": request.headers.get("X-Lab-Test-ID", ""),
             **fields,
         }
         line = json.dumps(event, default=str, separators=(",", ":"))

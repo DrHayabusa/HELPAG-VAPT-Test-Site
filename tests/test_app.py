@@ -39,7 +39,7 @@ class TestSiteTests(unittest.TestCase):
         self.assertEqual(guarded.get("/health").status_code, 200)
 
     def test_all_training_events(self):
-        self.client.get("/api/users/2")
+        self.client.get("/api/users/2", headers={"X-Lab-Test-ID": "BURP-A01-001"})
         self.client.get("/api/backup")
         injection = self.client.get("/api/products/search", query_string={"q": "' OR 1=1--"})
         self.client.get("/reflect", query_string={"name": "<script>alert(1)</script>"})
@@ -57,6 +57,8 @@ class TestSiteTests(unittest.TestCase):
             "authentication_attempt", "unsigned_data_import", "monitoring_gap_simulated",
         }
         self.assertTrue(expected.issubset(event_types))
+        correlated = next(item for item in self.events() if item["event_type"] == "broken_access_attempt")
+        self.assertEqual(correlated["test_id"], "BURP-A01-001")
 
     @patch("app.requests.get")
     def test_ssrf_boundary(self, mock_get):
@@ -83,4 +85,3 @@ class TestSiteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
