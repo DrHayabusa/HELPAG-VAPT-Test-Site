@@ -1,6 +1,6 @@
 # Windows IIS deployment guide
 
-End-to-end build of the HELP AG VAPT CTF range on Windows Server, behind IIS,
+End-to-end build of the Meridian Freight Solutions target on Windows Server, behind IIS,
 with Splunk integration. Follow [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md)
 after step 6.
 
@@ -19,10 +19,10 @@ after step 6.
         |  http://<server>:8080
         v
    +----------+      rewrite      +---------------------------+
-   |   IIS    | ----------------> | Waitress  127.0.0.1:5005  |  the CTF app
+   |   IIS    | ----------------> | Waitress  127.0.0.1:5005  |  the app
    | ARR/URL  |                   +---------------------------+
    | Rewrite  |                                |
-   +----------+                                | SSRF challenge target
+   +----------+                                | SSRF destination
         |                                      v
         | W3C access logs           +---------------------------+
         v                           | http.server 127.0.0.1:8081|  metadata service
@@ -66,7 +66,7 @@ git clone https://github.com/DrHayabusa/HELPAG-VAPT-Test-Site.git C:\Lab\HELPAG-
 Set-Location C:\Lab\HELPAG-VAPT-Test-Site
 ```
 
-Keep the path short and free of spaces. Several challenges read flag files by
+Keep the path short and free of spaces. Several findings read artifact files by
 relative path from the repository root.
 
 ---
@@ -96,7 +96,7 @@ The installer performs eight steps and prints each one:
 6. Creates the IIS app pool and site, and configures W3C logging with the fields
    the Splunk searches expect.
 7. Registers two scheduled tasks that start at boot and restart on failure:
-   - `HELPAG-VAPT-Test-Site` — the CTF application on `127.0.0.1:5005`
+   - `HELPAG-VAPT-Test-Site` — the application on `127.0.0.1:5005`
    - `HELPAG-VAPT-Test-Site-Metadata` — the SSRF target on `127.0.0.1:8081`
 8. Waits for `/health` and reports.
 
@@ -121,7 +121,7 @@ entry in the chain.
 
 **Relaxed request filtering.** IIS rejects `..`, double-encoded sequences and
 unusual verbs with a 404 *before* the request reaches the backend. Left at the
-defaults, the path traversal challenge and several encoded payloads are
+defaults, the path traversal finding and several encoded payloads are
 unsolvable and generate no telemetry. `allowDoubleEscaping="true"` and the
 cleared `hiddenSegments` list deliberately let them through.
 

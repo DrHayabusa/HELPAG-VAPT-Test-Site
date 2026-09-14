@@ -2,7 +2,7 @@
 
 Run a command from [`OWASP_TOP10_TEST_COMMANDS.md`](../OWASP_TOP10_TEST_COMMANDS.md)
 or the full [`tools/validate_range.sh`](../tools/validate_range.sh), then execute
-the SPL below. Complete per-challenge detections, with MITRE mapping and
+the SPL below. Complete per-finding detections, with MITRE mapping and
 remediation, are in [`ASSESSMENT_PLAYBOOK.md`](../ASSESSMENT_PLAYBOOK.md).
 
 ## Is anything arriving?
@@ -74,11 +74,11 @@ index=vapt_lab sourcetype=helpag:owasp:json
 A source touching three or more stages inside an hour is an intrusion, not a
 scan. A vulnerability scanner generates enormous volume but rarely passes stage 2.
 
-## CTF scoring telemetry
+## Range scoring telemetry
 
 ```spl
-index=vapt_lab sourcetype=helpag:owasp:json event_type=ctf_flag_captured duplicate=false
-| stats sum(points) as points values(challenge_title) as challenges
+index=vapt_lab sourcetype=helpag:owasp:json event_type=range_finding_confirmed duplicate=false
+| stats sum(points) as points values(finding_title) as findings
         values(mitre_techniques) as techniques by team source_ip
 | sort - points
 ```
