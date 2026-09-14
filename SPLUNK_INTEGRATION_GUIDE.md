@@ -32,7 +32,7 @@ A full validation run produces roughly **145 events across 34 distinct
   "referer": "",
   "test_id": "purple-run-1",
   "team": "red-team-1",
-  "command_line": "ping -c 1 -W 1 127.0.0.1; cat flagstore/cmdi.flag",
+  "command_line": "ping -c 1 -W 1 127.0.0.1; cat instance/keys/depot-transfer.key",
   "exit_code": 0
 }
 ```

