@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block title %}Administration - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Administration</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Internal</div>
+  <h1>Operations administration</h1>
+  <div class="grid c3" style="margin-top:26px">
+    <div class="card"><h3>Message queue</h3>
+      <p>Customer enquiries awaiting a response.</p>
+      <p><a class="btn ghost" href="/admin/messages">Open queue</a></p></div>
+    <div class="card"><h3>Depot diagnostics</h3>
+      <p>Check connectivity to a depot endpoint.</p>
+      <p><a class="btn ghost" href="/admin/diagnostics">Open tool</a></p></div>
+    <div class="card"><h3>Campaign editor</h3>
+      <p>Preview a customer email campaign before sending.</p>
+      <p><a class="btn ghost" href="/admin/campaigns/preview">Open editor</a></p></div>
+  </div>
+
+  <h2 style="margin-top:40px">Business continuity</h2>
+  <table class="data">
+    <tbody>
+      <tr><th style="width:280px">Disaster recovery master code</th><td><code>{{ recovery_code }}</code></td></tr>
+      <tr><th>Failover site</th><td>Hamburg DC2</td></tr>
+      <tr><th>Last DR test</th><td>14 June 2026</td></tr>
+      <tr><th>RTO / RPO</th><td>4 hours / 15 minutes</td></tr>
+    </tbody>
+  </table>
+  <p class="meta" style="margin-top:12px">Handle the recovery code in line with the
+  information classification policy. Do not circulate by email.</p>
+</div></section>
+{% endblock %}

@@ -1,9 +1,0 @@
-{
-  "Code": "Success",
-  "Type": "AWS-HMAC",
-  "AccessKeyId": "AKIA-LAB-ONLY-NOT-VALID",
-  "SecretAccessKey": "lab/synthetic/secret/not-a-real-key",
-  "Token": "lab-session-token-synthetic",
-  "Expiration": "2099-01-01T00:00:00Z",
-  "flag": "HELPAG{ssrf_r34ch3d_th3_m3t4d4t4_s3rv1c3}"
-}

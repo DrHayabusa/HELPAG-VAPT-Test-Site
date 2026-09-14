@@ -1,0 +1,8 @@
+{
+  "Code": "Success",
+  "Type": "AWS-HMAC",
+  "AccessKeyId": "AKIAMFSLABONLYNOTVALID",
+  "SecretAccessKey": "lab/synthetic/secret/not-a-real-key",
+  "Token": "MERIDIAN{1nst4nc3_r0l3_cr3ds_v14_pr3v13w}",
+  "Expiration": "2099-01-01T00:00:00Z"
+}

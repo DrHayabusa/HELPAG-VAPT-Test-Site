@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block title %}Message queue - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> /
+  <a href="/admin">Administration</a> / Message queue</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Internal</div>
+  <h1>Customer enquiry queue</h1>
+  {% if captured %}
+  <div class="notice">Session diagnostic: <code>mfs_staff_session={{ captured }}</code></div>
+  {% endif %}
+  <table class="data" style="margin-top:20px">
+    <thead><tr><th style="width:160px">From</th><th style="width:170px">Company</th>
+      <th>Message</th><th style="width:150px">Received</th></tr></thead>
+    <tbody>
+      {% for e in enquiries %}
+      <tr>
+        <td>{{ e['name'] }}<br><span class="meta">{{ e['email'] }}</span></td>
+        <td>{{ e['company'] }}</td>
+        <!-- Enquiry text is rendered exactly as the customer submitted it. -->
+        <td>{{ e['message']|safe }}</td>
+        <td class="meta">{{ e['received_at'] }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="meta">The queue is empty.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div></section>
+{% endblock %}

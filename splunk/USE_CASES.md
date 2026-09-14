@@ -3,7 +3,7 @@
 Run a command from [`OWASP_TOP10_TEST_COMMANDS.md`](../OWASP_TOP10_TEST_COMMANDS.md)
 or the full [`tools/validate_range.sh`](../tools/validate_range.sh), then execute
 the SPL below. Complete per-challenge detections, with MITRE mapping and
-remediation, are in [`CTF_PLAYBOOK.md`](../CTF_PLAYBOOK.md).
+remediation, are in [`ASSESSMENT_PLAYBOOK.md`](../ASSESSMENT_PLAYBOOK.md).
 
 ## Is anything arriving?
 

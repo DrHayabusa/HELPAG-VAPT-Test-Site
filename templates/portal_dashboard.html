@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block title %}Portal - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Customer portal</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Customer portal</div>
+  <h1>{{ account['company'] if account else 'Your account' }}</h1>
+  <p class="meta">Account {{ account['account_ref'] if account else '' }}
+    &middot; signed in as {{ account['username'] if account else '' }}
+    &middot; <span class="pill">{{ account['account_type'] if account else '' }}</span></p>
+
+  {% if staff %}
+  <div class="notice">You have staff privileges on this session.
+    <a href="/admin">Open the administration area</a>.</div>
+  {% endif %}
+
+  <h2 style="margin-top:32px">Your consignments</h2>
+  <table class="data">
+    <thead><tr><th>Reference</th><th>Origin</th><th>Destination</th><th>Service</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for s in shipments %}
+      <tr>
+        <td><a href="/portal/shipments?reference={{ s['reference'] }}">{{ s['reference'] }}</a></td>
+        <td>{{ s['origin'] }}</td><td>{{ s['destination'] }}</td><td>{{ s['service'] }}</td>
+        <td><span class="pill {{ 'ok' if s['status']=='Delivered' else '' }}">{{ s['status'] }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="meta">No consignments on this account.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="grid c2" style="margin-top:34px">
+    <div class="card">
+      <h3>Invoices</h3>
+      <p>Download invoices issued against this account.</p>
+      <p><a href="/api/v1/invoices/download?document=INV-2026-00841.txt">INV-2026-00841</a><br>
+         <a href="/api/v1/invoices/download?document=INV-2026-00842.txt">INV-2026-00842</a><br>
+         <a href="/api/v1/invoices/download?document=terms-of-carriage.txt">Terms of carriage</a></p>
+    </div>
+    <div class="card">
+      <h3>Account settings</h3>
+      <p>Update the contact details we hold for this account.</p>
+      <form class="stack" id="profile-form">
+        <div class="field"><label for="contact_name">Contact name</label>
+          <input id="contact_name" name="contact_name"
+                 value="{{ account['contact_name'] if account else '' }}"></div>
+        <div class="field"><label for="email">Email</label>
+          <input id="email" name="email" value="{{ account['email'] if account else '' }}"></div>
+        <button class="btn" type="submit">Save changes</button>
+      </form>
+      <div id="profile-result"></div>
+    </div>
+  </div>
+</div></section>
+<script>
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const res = await fetch('/portal/profile', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      contact_name: document.getElementById('contact_name').value,
+      email: document.getElementById('email').value })
+  });
+  const data = await res.json();
+  document.getElementById('profile-result').innerHTML =
+    '<div class="notice good">Your details have been updated.</div>';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block title %}Track a consignment - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Track a consignment</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Consignment tracking</div>
+  <h1>Track a consignment</h1>
+  <p>Enter the reference from your booking confirmation.</p>
+  <form class="stack" id="track-form" style="margin-top:20px">
+    <div class="field"><label for="reference">Consignment reference</label>
+      <input id="reference" name="reference" placeholder="MFS-2026-0000" autocomplete="off"></div>
+    <button class="btn" type="submit">Track</button>
+  </form>
+  <div id="track-result" style="margin-top:24px"></div>
+</div></section>
+<script>
+async function track(reference) {
+  const res = await fetch('/api/v1/shipments/' + encodeURIComponent(reference));
+  const data = await res.json();
+  const out = document.getElementById('track-result');
+  if (data.error) { out.innerHTML = '<div class="notice">' + data.error + '</div>'; return; }
+  out.innerHTML =
+    '<table class="data"><tbody>' +
+    Object.entries(data).map(([k, v]) =>
+      '<tr><th style="width:220px">' + k.replace(/_/g, ' ') + '</th><td>' + v + '</td></tr>').join('') +
+    '</tbody></table>';
+}
+document.getElementById('track-form').addEventListener('submit', (e) => {
+  e.preventDefault(); track(document.getElementById('reference').value);
+});
+const preset = new URLSearchParams(location.search).get('reference');
+if (preset) { document.getElementById('reference').value = preset; track(preset); }
+</script>
+{% endblock %}

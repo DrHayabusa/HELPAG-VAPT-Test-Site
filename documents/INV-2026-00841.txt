@@ -1,0 +1,7 @@
+MERIDIAN FREIGHT SOLUTIONS
+Invoice INV-2026-00841
+Account MFS-AC-1001 - Harborline Trading
+
+Sea LCL Rotterdam - Felixstowe      EUR 7,728.00
+Customs documentation                 EUR   145.00
+Total due                             EUR 7,873.00

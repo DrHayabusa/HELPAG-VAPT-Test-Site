@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block body %}
+<div class="hero"><div class="wrap">
+  <h1>Freight that clears, on the day you said it would.</h1>
+  <p class="lede">Sea, road and rail forwarding across Europe, the Gulf and North Africa,
+  with customs brokerage handled in-house. 340 staff across eleven depots.</p>
+  <div class="actions">
+    <a class="btn light" href="/services/quote">Get an instant quote</a>
+    <a class="btn ghost" style="color:#cfe0f0;border-color:rgba(255,255,255,.35)" href="/services">Our services</a>
+  </div>
+  <form class="tracker" action="/portal/shipments" method="get">
+    <label for="ref">Track a consignment</label>
+    <div class="row">
+      <input id="ref" name="reference" placeholder="MFS-2026-0000" autocomplete="off">
+      <button class="btn light" type="submit">Track</button>
+    </div>
+  </form>
+</div></div>
+
+<section><div class="wrap">
+  <div class="eyebrow">What we move</div>
+  <h2>Four service lines, one operations team</h2>
+  <div class="grid c3" style="margin-top:28px">
+    <div class="card"><h3>Sea freight</h3>
+      <p>FCL and LCL consolidation out of Rotterdam, Felixstowe and Jebel Ali,
+      with weekly departures on our core lanes.</p></div>
+    <div class="card"><h3>Road freight</h3>
+      <p>FTL and groupage across the Benelux, DACH and Central European corridors,
+      with tail-lift and ADR capability.</p></div>
+    <div class="card"><h3>Rail and intermodal</h3>
+      <p>Scheduled intermodal services on the Rotterdam–Milan and Hamburg–Warsaw
+      corridors for lower-emission inland legs.</p></div>
+  </div>
+</div></section>
+
+<section class="alt"><div class="wrap">
+  <div class="grid c3">
+    <div><div class="stat">11</div><span>depots across three regions</span></div>
+    <div><div class="stat">96.4%</div><span>on-time delivery, FY2026 to date</span></div>
+    <div><div class="stat">42,000</div><span>consignments handled last year</span></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="grid c2">
+    <div>
+      <div class="eyebrow">Customer portal</div>
+      <h2>Visibility without the phone call</h2>
+      <p>Track consignments, download invoices, manage booking references and pull
+      rate cards for your contracted lanes. Access is included with every account.</p>
+      <p><a class="btn" href="/portal/login">Sign in to the portal</a></p>
+    </div>
+    <div class="card">
+      <h3>Latest from the newsroom</h3>
+      <p class="meta">3 September 2026</p>
+      <p><a href="/news">Meridian adds a second weekly Jebel Ali–Rotterdam sailing</a></p>
+      <p class="meta">18 August 2026</p>
+      <p><a href="/news">Gdansk depot expansion completed ahead of schedule</a></p>
+    </div>
+  </div>
+</div></section>
+{% endblock %}

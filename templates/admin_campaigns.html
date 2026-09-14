@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block title %}Campaign editor - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> /
+  <a href="/admin">Administration</a> / Campaigns</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Marketing</div>
+  <h1>Campaign preview</h1>
+  <p style="max-width:70ch">Compose the email body and preview it as a customer
+  will receive it. Merge fields available:
+  <code>{% raw %}{{ customer_name }}{% endraw %}</code> and
+  <code>{% raw %}{{ account_ref }}{% endraw %}</code>.</p>
+  <form class="stack" method="post" action="/admin/campaigns/preview" style="margin-top:20px;max-width:640px">
+    <div class="field"><label for="body">Email body</label>
+      <textarea id="body" name="body" rows="7"
+        placeholder="Dear {% raw %}{{ customer_name }}{% endraw %}, your account {% raw %}{{ account_ref }}{% endraw %} ...">{{ body }}</textarea></div>
+    <button class="btn" type="submit">Preview</button>
+  </form>
+  {% if rendered %}
+  <h2 style="margin-top:30px">Preview</h2>
+  <div class="card">{{ rendered|safe }}</div>
+  {% endif %}
+</div></section>
+{% endblock %}

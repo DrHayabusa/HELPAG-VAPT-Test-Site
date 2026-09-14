@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block title %}Depot diagnostics - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> /
+  <a href="/admin">Administration</a> / Diagnostics</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Internal tools</div>
+  <h1>Depot connectivity check</h1>
+  <p style="max-width:66ch">Checks whether a depot endpoint is reachable from this
+  application server. Use the depot hostname or IP address.</p>
+  <form class="stack" method="post" action="/admin/diagnostics" style="margin-top:20px">
+    <div class="field"><label for="host">Depot host</label>
+      <input id="host" name="host" value="{{ host }}" placeholder="depot-rtm-01" autocomplete="off">
+      <div class="help">For example <code>depot-rtm-01</code> or <code>10.20.4.11</code>.</div></div>
+    <button class="btn" type="submit">Run check</button>
+  </form>
+  {% if output is not none %}
+  <h2 style="margin-top:30px">Result</h2>
+  <pre class="out">{{ output }}</pre>
+  {% endif %}
+</div></section>
+{% endblock %}

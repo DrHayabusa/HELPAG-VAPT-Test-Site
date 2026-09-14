@@ -1,9 +1,9 @@
-# Burp Suite guide — HELP AG VAPT range
+# Burp Suite guide — Meridian target
 
 > This guide covers the OWASP Top 10 baseline endpoints. The range is now a
 > 22-challenge CTF; the challenges this guide does not reach (command injection,
 > SSTI, XXE, path traversal, file upload, JWT `alg:none`, forged Flask sessions,
-> predictable reset tokens) are covered in [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md)
+> predictable reset tokens) are covered in [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md)
 > section 7, with Repeater-ready requests.
 
 This guide is only for the isolated `HELPAG-VAPT-Test-Site` deployed in your
@@ -325,7 +325,7 @@ behavior itself is reproduced.
 ## 16. CTF challenges beyond the OWASP baseline
 
 Load these into Repeater alongside the sections above. Full walkthroughs, flags
-and detection SPL are in [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md).
+and detection SPL are in [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md).
 
 | Challenge | Request to build in Repeater |
 |---|---|

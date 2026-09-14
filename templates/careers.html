@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block title %}Careers - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Careers</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Careers</div>
+  <h1>Open roles</h1>
+  <div class="grid c2" style="margin:26px 0">
+    <div class="card"><h3>Customs Declarant</h3><p class="meta">Rotterdam · Full time</p>
+      <p>Filing import and export declarations for our Gulf and Far East lanes.</p></div>
+    <div class="card"><h3>Operations Coordinator</h3><p class="meta">Hamburg · Full time</p>
+      <p>Day-to-day management of groupage bookings across the DACH corridor.</p></div>
+    <div class="card"><h3>Night Dispatch Supervisor</h3><p class="meta">Felixstowe · Shift</p>
+      <p>Coordinating overnight trunking and depot handovers.</p></div>
+    <div class="card"><h3>Integration Engineer</h3><p class="meta">Rotterdam · Hybrid</p>
+      <p>Building and supporting EDI and API integrations with customer systems.</p></div>
+  </div>
+
+  <h2>Apply</h2>
+  <p>Send us your CV and we will be in touch within five working days.</p>
+  <form class="stack" action="/careers/apply" method="post" enctype="multipart/form-data">
+    <div class="field"><label for="applicant">Your name</label>
+      <input id="applicant" name="applicant" required></div>
+    <div class="field"><label for="role">Role</label>
+      <select id="role" name="role">
+        <option>Customs Declarant</option><option>Operations Coordinator</option>
+        <option>Night Dispatch Supervisor</option><option>Integration Engineer</option>
+      </select></div>
+    <div class="field"><label for="cv">Your CV</label>
+      <input id="cv" name="cv" type="file" required>
+      <div class="help">PDF or Word document preferred.</div></div>
+    <button class="btn" type="submit">Submit application</button>
+  </form>
+</div></section>
+{% endblock %}

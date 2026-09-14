@@ -1,6 +1,6 @@
 # Splunk integration guide
 
-Connecting the HELP AG VAPT range to a Splunk lab: index, ingestion, field
+Connecting the Meridian target to a Splunk lab: index, ingestion, field
 extraction, verification, and turning on the 21 detection use cases.
 
 Assumes the range is already deployed — see
@@ -13,7 +13,7 @@ Assumes the range is already deployed — see
 
 | Source | Sourcetype | Content |
 |---|---|---|
-| `logs\helpag-events.jsonl` | `helpag:owasp:json` | Structured security events — one JSON object per line |
+| `logs\meridian-events.jsonl` | `helpag:owasp:json` | Structured security events — one JSON object per line |
 | `C:\inetpub\logs\LogFiles\W3SVC*\u_ex*.log` | `iis` | W3C access logs (IIS deployments only) |
 
 A full validation run produces roughly **145 events across 34 distinct
@@ -128,7 +128,7 @@ disabled = 0
 index = vapt_lab
 sourcetype = iis
 
-[monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\helpag-events.jsonl]
+[monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\meridian-events.jsonl]
 disabled = 0
 index = vapt_lab
 sourcetype = helpag:owasp:json
@@ -308,7 +308,7 @@ nuclei -u http://<server>:8080 -severity low,medium,high,critical
 ```
 
 A scanner floods stages 1–2 of UC-21 and rarely reaches stage 3. A human working
-through `CTF_PLAYBOOK.md` moves cleanly through all four. If your alerting cannot
+through `ASSESSMENT_PLAYBOOK.md` moves cleanly through all four. If your alerting cannot
 separate those two, that is your finding — and the most valuable output of this
 whole lab.
 
@@ -379,7 +379,7 @@ index=vapt_lab sourcetype=helpag:owasp:json event_type=command_execution
 
 ```spl
 index=_internal sourcetype=splunkd component=TailReader OR component=WatchedFile
-| search "helpag-events" | tail 20
+| search "meridian-events" | tail 20
 ```
 
 Check the forwarder is connected:
@@ -439,4 +439,4 @@ Expected: `{"text":"Success","code":0}`.
 | `splunk/TA-helpag-vapt/default/macros.conf` | Search shorthands used in the docs |
 | `splunk/universal-forwarder/inputs.conf.example` | Monitor stanzas for both sources |
 | [`splunk/USE_CASES.md`](splunk/USE_CASES.md) | Validation searches |
-| [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md) | Per-challenge SPL, MITRE mapping, remediation |
+| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | Per-challenge SPL, MITRE mapping, remediation |

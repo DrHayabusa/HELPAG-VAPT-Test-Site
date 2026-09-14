@@ -3,7 +3,7 @@
 One command per OWASP Top 10 2021 category, with the detection event each one
 produces. These are the *smoke tests* — run them to prove the range and the SIEM
 pipeline work. For the full exploitation walkthroughs with flags, MITRE mapping
-and SPL, see [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md).
+and SPL, see [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md).
 
 Run them only against an isolated lab host.
 
@@ -149,7 +149,7 @@ to reach your corporate network. Outside Docker the metadata service is on
 ## Confirm everything landed
 
 ```bash
-jq -r 'select(.test_id=="smoke-run-1") | .event_type' logs/helpag-events.jsonl | sort | uniq -c
+jq -r 'select(.test_id=="smoke-run-1") | .event_type' logs/meridian-events.jsonl | sort | uniq -c
 ```
 
 ```spl
@@ -164,13 +164,13 @@ index=vapt_lab sourcetype=helpag:owasp:json test_id="smoke-run-1"
 nuclei -u "$TARGET" -severity low,medium,high,critical -jsonl -o nuclei.jsonl
 katana -u "$TARGET" -jc -d 3 -o katana-urls.txt
 httpx -u "$TARGET" -status-code -title -tech-detect
-ffuf -u "$TARGET/FUZZ" -w wordlists/helpag-paths.txt -mc all -of json -o ffuf.json
-gobuster dir -u "$TARGET" -w wordlists/helpag-paths.txt -o gobuster.txt
+ffuf -u "$TARGET/FUZZ" -w wordlists/meridian-paths.txt -mc all -of json -o ffuf.json
+gobuster dir -u "$TARGET" -w wordlists/meridian-paths.txt -o gobuster.txt
 sqlmap -u "$TARGET/api/products/search?q=test" -p q --batch --dbms=sqlite --dump -T flags
 ```
 
 Run a scanner and the playbook chain back to back, then compare what your alerts
-produced for each. Section 8 of [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md) explains why
+produced for each. Section 8 of [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) explains why
 that comparison is the most useful tuning exercise on this range.
 
 ## Full automated run

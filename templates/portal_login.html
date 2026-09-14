@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block title %}Portal sign in - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<section><div class="wrap" style="max-width:520px">
+  <div class="eyebrow">Customer portal</div>
+  <h1>Sign in</h1>
+  {% if legacy %}
+  <div class="notice">You are using the pre-migration sign-in. Customers with
+  older integrations may continue to use this until the migration completes.</div>
+  {% endif %}
+  <form class="stack" id="login-form">
+    <div class="field"><label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required></div>
+    <div class="field"><label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required></div>
+    <button class="btn" type="submit">Sign in</button>
+  </form>
+  <div id="login-result" style="margin-top:18px"></div>
+  <p class="meta" style="margin-top:22px">
+    <a href="/portal/reset">Forgotten your password?</a>
+    {% if not legacy %} &middot; <a href="/portal/login?legacy=1">Use the previous sign-in page</a>{% endif %}
+  </p>
+</div></section>
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const legacy = new URLSearchParams(location.search).get('legacy') === '1';
+  const res = await fetch('/portal/login' + (legacy ? '?legacy=1' : ''), {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({
+      username: document.getElementById('username').value,
+      password: document.getElementById('password').value })
+  });
+  const data = await res.json();
+  if (data.authenticated) { location.href = '/portal/dashboard'; return; }
+  document.getElementById('login-result').innerHTML =
+    '<div class="notice">' + (data.message || 'Sign in failed.') + '</div>';
+});
+</script>
+{% endblock %}

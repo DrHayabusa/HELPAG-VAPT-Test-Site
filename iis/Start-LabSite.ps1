@@ -25,8 +25,8 @@ New-Item -ItemType Directory -Force -Path $uploadDirectory | Out-Null
 $env:LAB_MODE       = "true"
 $env:LAB_HOST       = "127.0.0.1"
 $env:LAB_PORT       = "5005"
-$env:LAB_DATABASE   = Join-Path $logDirectory "ctf_lab.db"
-$env:LAB_EVENT_LOG  = Join-Path $logDirectory "helpag-events.jsonl"
+$env:LAB_DATABASE   = Join-Path $logDirectory "meridian.db"
+$env:LAB_EVENT_LOG  = Join-Path $logDirectory "meridian-events.jsonl"
 $env:LAB_UPLOAD_DIR = $uploadDirectory
 
 # Deliberately weak - challenge auth-weak-secret expects players to recover it.

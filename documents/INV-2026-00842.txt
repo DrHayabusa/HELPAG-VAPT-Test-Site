@@ -1,0 +1,6 @@
+MERIDIAN FREIGHT SOLUTIONS
+Invoice INV-2026-00842
+Account MFS-AC-1002 - Northgate Components
+
+Road LTL Hamburg - Gdansk           EUR 2,365.00
+Total due                           EUR 2,365.00
