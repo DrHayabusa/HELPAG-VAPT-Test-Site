@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block title %}Instant quote - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / <a href="/services">Services</a> / Quote</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Instant quote</div>
+  <h1>Estimate your freight cost</h1>
+  <p style="max-width:66ch">Indicative only. Final pricing depends on dimensions,
+  incoterms and customs classification.</p>
+  <form class="stack" id="quote-form" style="margin-top:24px">
+    <div class="field"><label for="lane">Lane</label>
+      <select id="lane" name="lane">
+        <option>Rotterdam - Felixstowe</option><option>Felixstowe - Dublin</option>
+        <option>Hamburg - Gdansk</option><option>Jebel Ali - Rotterdam</option>
+      </select></div>
+    <div class="field"><label for="weight">Chargeable weight (kg)</label>
+      <input id="weight" name="weight_kg" value="1200"></div>
+    <div class="field"><label for="rate">Agreed rate (EUR / kg)</label>
+      <input id="rate" name="rate_per_kg" value="0.42"></div>
+    <button class="btn" type="submit">Calculate</button>
+  </form>
+  <div id="quote-result" style="margin-top:22px"></div>
+</div></section>
+<script>
+document.getElementById('quote-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = {
+    weight_kg: document.getElementById('weight').value,
+    rate_per_kg: document.getElementById('rate').value
+  };
+  const res = await fetch('/services/quote', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  document.getElementById('quote-result').innerHTML =
+    '<div class="notice good"><b>Estimated total: EUR ' + data.total + '</b></div>' +
+    '<pre class="out">' + JSON.stringify(data, null, 2) + '</pre>';
+});
+</script>
+{% endblock %}

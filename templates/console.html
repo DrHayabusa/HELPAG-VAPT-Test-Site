@@ -1,0 +1,21 @@
+{% extends "console_layout.html" %}
+{% block title %}Findings - Range console{% endblock %}
+{% block content %}
+<h1>Findings</h1>
+<p class="lede">Operator view for the Meridian Freight Solutions target. Twenty-two
+findings, each proved by a data artifact recovered from the application. The target
+site does not link here and does not disclose anything on this page.</p>
+<div class="register">
+  <input id="team-input" placeholder="Team name" maxlength="32" autocomplete="off">
+  <button id="team-btn">Start</button>
+</div>
+<div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+<p class="progress-meta" id="progress-meta">Register a team to track progress.</p>
+<div class="submit-row">
+  <input id="proof-input" placeholder="Paste the recovered value" autocomplete="off" spellcheck="false">
+  <button id="proof-btn">Record finding</button>
+  <span id="proof-result" class="result"></span>
+</div>
+<div id="board"></div>
+{% endblock %}
+{% block scripts %}<script>initConsole();</script>{% endblock %}

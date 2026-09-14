@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{% block title %}Range console{% endblock %}</title>
+<link rel="stylesheet" href="/static/console.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand"><span class="mark">//</span> RANGE CONSOLE <span class="dim">meridian target</span></span>
+  <nav>
+    <a href="/range/console">Findings</a>
+    <a href="/range/scoreboard">Scoreboard</a>
+    <a href="/" target="_blank">Target site</a>
+  </nav>
+  <div class="team-slot" id="team-slot"></div>
+</header>
+<main>{% block content %}{% endblock %}</main>
+<script src="/static/console.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

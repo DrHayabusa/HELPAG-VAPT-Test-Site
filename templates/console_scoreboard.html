@@ -1,0 +1,18 @@
+{% extends "console_layout.html" %}
+{% block title %}Scoreboard - Range console{% endblock %}
+{% block content %}
+<h1>Scoreboard</h1>
+<p class="lede">Live standings. Refreshes every ten seconds.</p>
+<div class="panel">
+  <table class="scores"><thead><tr>
+    <th>#</th><th>Team</th><th>Findings</th><th>Points</th><th>Last confirmed</th>
+  </tr></thead><tbody id="score-body"><tr><td colspan="5" class="dim">Loading…</td></tr></tbody></table>
+</div>
+<div class="panel">
+  <h2 style="font-size:1.05em;margin:0 0 12px">Coverage by finding</h2>
+  <table class="scores"><thead><tr>
+    <th>Finding</th><th>Business feature</th><th>Points</th><th>Teams</th>
+  </tr></thead><tbody id="progress-body"></tbody></table>
+</div>
+{% endblock %}
+{% block scripts %}<script>initScoreboard();</script>{% endblock %}

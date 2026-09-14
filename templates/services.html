@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block title %}Services - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Services</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Services</div>
+  <h1>Freight forwarding and customs brokerage</h1>
+  <p style="max-width:70ch">Indicative published rates for our scheduled lanes are
+  below. Contracted customers see their own negotiated rates in the portal.</p>
+
+  <form action="/search" method="get" style="max-width:420px;margin:26px 0">
+    <div class="field">
+      <label for="q">Search lanes and services</label>
+      <input id="q" name="q" placeholder="e.g. Rotterdam" autocomplete="off">
+    </div>
+    <button class="btn" type="submit">Search</button>
+  </form>
+
+  <h2 style="margin-top:36px">Published lane rates</h2>
+  <table class="data">
+    <thead><tr><th>Lane</th><th>Service</th><th>Indicative rate</th></tr></thead>
+    <tbody>
+      {% for r in rates %}
+      <tr><td>{{ r['lane'] }}</td><td>{{ r['service'] }}</td>
+          <td>EUR {{ '%.2f'|format(r['price_per_kg']) }} / kg</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="meta" style="margin-top:14px">Rates exclude duties, VAT and terminal
+  handling. Valid for shipments booked in the current quarter.</p>
+  <p style="margin-top:24px"><a class="btn" href="/services/quote">Get an instant quote</a></p>
+</div></section>
+{% endblock %}

@@ -28,7 +28,7 @@ after step 6.
         v                           | http.server 127.0.0.1:8081|  metadata service
    C:\inetpub\logs\LogFiles         +---------------------------+
         |                                      |
-        |                   logs\helpag-events.jsonl (JSON security events)
+        |                   logs\meridian-events.jsonl (JSON security events)
         +--------------------+-----------------+
                              v
                     Splunk Universal Forwarder  ->  index=vapt_lab
@@ -103,7 +103,7 @@ The installer performs eight steps and prints each one:
 Expected final output:
 
 ```
-HELP AG VAPT range installed: http://localhost:8080
+Meridian target installed: http://localhost:8080
 Backend bound to 127.0.0.1:5005; metadata service to 127.0.0.1:8081.
 ```
 
@@ -154,7 +154,7 @@ Check the forwarded client address is arriving — this is the single most commo
 IIS misconfiguration for this range:
 
 ```powershell
-Get-Content .\logs\helpag-events.jsonl -Tail 1 | ConvertFrom-Json | Select-Object source_ip, event_type
+Get-Content .\logs\meridian-events.jsonl -Tail 1 | ConvertFrom-Json | Select-Object source_ip, event_type
 ```
 
 `source_ip` must be the **client's** address, not `127.0.0.1`. If it shows
@@ -190,7 +190,7 @@ Clears the scoreboard, guestbook, uploads and event log. Flags do not change.
 
 ```powershell
 Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
-Remove-Item .\logs\ctf_lab.db, .\logs\helpag-events.jsonl -ErrorAction SilentlyContinue
+Remove-Item .\logs\meridian.db, .\logs\meridian-events.jsonl -ErrorAction SilentlyContinue
 Get-ChildItem .\uploads\ -Exclude .gitkeep | Remove-Item -Force
 Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
 ```
@@ -198,7 +198,7 @@ Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
 ### Watch the range live
 
 ```powershell
-Get-Content .\logs\helpag-events.jsonl -Wait -Tail 20 |
+Get-Content .\logs\meridian-events.jsonl -Wait -Tail 20 |
     ForEach-Object { $_ | ConvertFrom-Json | Select-Object timestamp, source_ip, event_type, severity }
 
 Invoke-RestMethod http://localhost:8080/api/ctf/scoreboard |
@@ -220,7 +220,7 @@ Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
 ## 7. Windows-specific challenge differences
 
 Two challenges need different payloads under `cmd.exe`. Both are noted in
-[`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md); tell players if you are running a
+[`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md); tell players if you are running a
 Windows range.
 
 | Challenge | Linux payload | Windows payload |

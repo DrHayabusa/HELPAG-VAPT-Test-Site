@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block title %}Search - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Search</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <h1>Search results</h1>
+  <!-- The search term is written straight into the page. -->
+  <p>Showing results for <b>{{ term|safe }}</b></p>
+  <form action="/search" method="get" style="max-width:420px;margin:20px 0">
+    <input name="q" value="{{ term }}" placeholder="Search lanes and services">
+  </form>
+  {% if results %}
+  <table class="data">
+    <thead><tr><th>Lane</th><th>Service</th><th>Rate</th></tr></thead>
+    <tbody>{% for r in results %}
+      <tr><td>{{ r['lane'] }}</td><td>{{ r['service'] }}</td>
+          <td>EUR {{ '%.2f'|format(r['price_per_kg']) }} / kg</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% else %}
+  <p class="meta">No lanes matched that term.</p>
+  {% endif %}
+  <div class="notice">
+    Can't find what you need? <a href="/support/shared-search?q={{ term|urlencode }}">Send this
+    search to a support agent</a> and someone will follow up.
+  </div>
+</div></section>
+{% endblock %}

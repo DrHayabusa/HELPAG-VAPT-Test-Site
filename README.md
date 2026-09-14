@@ -1,25 +1,35 @@
-# HELP AG VAPT Range
+# Meridian Freight Solutions — security test target
 
-A capture-the-flag web target for an isolated security lab. Twenty-two
-deliberately vulnerable challenges across recon, injection, access control,
-authentication, file handling, SSRF and business logic — each one wired to a
-structured detection event so you can prove your SIEM use cases actually fire.
+A deliberately vulnerable corporate website and customer portal for an isolated
+security lab. It looks and behaves like a real logistics company's web estate:
+marketing pages, a customer portal, a partner API and a staff administration
+area. Twenty-two vulnerabilities live inside ordinary business features, and
+every exploitation writes a structured detection event so you can prove your
+SIEM use cases actually fire.
 
-> **Never expose this application to the Internet or to a production network.**
-> It contains genuine command execution, server-side template injection and
-> arbitrary file read. Every identity, secret and token in it is synthetic.
-> The app refuses all traffic unless `LAB_MODE=true`.
+Meridian Freight Solutions is fictional. Every identity, reference, key and
+credential in this build is synthetic.
 
-## What you get
+> **Never expose this to the Internet or to a production network.** It contains
+> genuine command execution, server-side template injection and arbitrary file
+> read. The application refuses all traffic unless `LAB_MODE=true`.
 
-| | |
+## How it differs from a CTF
+
+There is no challenge board on the target, no hints, no score display and no
+mention of the range. A tester approaches it the way they would a real
+engagement. **Proof of exploitation is the data itself** — a credential file, an
+HR document, an internal runbook, a cloud token, another customer's consignment
+record. No endpoint returns a field called `flag`; a test enforces that.
+
+The scoring board and scoreboard live in a **separate operator console** at
+`/range/console`, gated by a token. The target site never links to it.
+
+| Audience | Where they go |
 |---|---|
-| **22 challenges** | 2800 points, easy through hard, mapped to OWASP Top 10 2021 |
-| **Scoreboard** | Team registration, flag submission, first bloods, live progress |
-| **Detection content** | 21 Splunk use cases (UC-01 … UC-21) as disabled saved searches |
-| **MITRE ATT&CK mapping** | 13 techniques across 8 tactics, per challenge |
-| **Validation harness** | Solves all 22 challenges and reports pass/fail |
-| **Instructor playbook** | Full solutions, commands, SPL and remediation |
+| Tester | `http://<range>/` — the Meridian site, nothing else |
+| Instructor | `http://<range>/range/console?token=…` |
+| Detection engineer | Splunk, plus [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) |
 
 ## Quick start
 
@@ -31,11 +41,12 @@ docker compose up --build -d
 curl -s http://127.0.0.1:5005/health
 ```
 
-Open <http://127.0.0.1:5005/>, register a team name, and start hunting. Flags
-look like `HELPAG{...}` and are submitted on the same page.
+Open <http://127.0.0.1:5005/> — you should get a freight company's homepage.
+The operator console is at <http://127.0.0.1:5005/range/console?token=range-operator>.
 
-To reach the range from other machines on an isolated lab segment, set
-`LAB_BIND=0.0.0.0` in `.env`. Do that only on a segment you control.
+**Before a live exercise, change `RANGE_CONSOLE_TOKEN` in `.env`** — the default
+is published in this repository. Set `LAB_BIND=0.0.0.0` to reach the range from
+an isolated lab segment.
 
 ### Native Python
 
@@ -43,48 +54,38 @@ To reach the range from other machines on an isolated lab segment, set
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 LAB_MODE=true .venv/bin/python app.py &
-.venv/bin/python -m http.server 8080 --directory metadata &   # SSRF target
+.venv/bin/python -m http.server 8080 --directory metadata &   # SSRF destination
 ```
 
 ### Windows / IIS
 
-See [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md). IIS
-listens on the lab port and reverse-proxies to a Waitress backend bound to
-`127.0.0.1:5005`.
+See [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md).
 
-## Player rules
+## What's in it
 
-1. Scope is this host only. Do not pivot elsewhere on the lab network.
-2. No destructive actions — other teams share the instance.
-3. **Do not read the source.** This repository contains every flag. Solving by
-   `git clone` teaches nothing.
-4. Automated scanning is encouraged; it is what the detection use cases exist to catch.
+| | |
+|---|---|
+| **22 findings** | 2800 points, mapped to OWASP Top 10 2021 |
+| **Attack surface** | Marketing site, customer portal, partner API, staff admin area |
+| **Detection content** | 22 Splunk use cases (UC-01 … UC-22), shipped disabled |
+| **MITRE ATT&CK** | 13 techniques across 8 tactics, per finding |
+| **Operator console** | Findings, hints, scoring, scoreboard — token-gated, separate |
+| **Validation** | Recovers all 22 artifacts and reports pass/fail |
 
-The in-app `/rules` page carries the same list, and every challenge card on the
-board has free hints.
+Findings cover recon and exposed files, IDOR, mass assignment, SQL injection
+(union and auth bypass), reflected and stored XSS, path traversal, command
+injection, SSTI, XXE, unrestricted upload, JWT `alg:none`, forged sessions,
+brute force, predictable reset tokens, SSRF to cloud metadata, business logic
+abuse, and a Log4Shell-class lookup.
 
-## Sending events to your SIEM
-
-Every request and every exploit attempt emits a structured JSON event. Configure
-HEC in `.env`:
-
-```bash
-SPLUNK_HEC_URL=https://splunk.lab.invalid:8088/services/collector
-SPLUNK_HEC_TOKEN=<token>
-SPLUNK_INDEX=vapt_lab
-SPLUNK_SOURCETYPE=helpag:owasp:json
-```
-
-Without HEC, events land in `logs/helpag-events.jsonl` — point a Universal
-Forwarder at it instead. Setup details in [`splunk/README.md`](splunk/README.md);
-the use cases are in
-[`splunk/TA-helpag-vapt/`](splunk/TA-helpag-vapt/default/savedsearches.conf).
+They chain: `/robots.txt` leads to a runbook naming three other findings, and
+`/.env` hands over the session key, the JWT key and a service password.
 
 ## Verify the deployment
 
 ```bash
 ./tools/validate_range.sh http://127.0.0.1:5005      # expects: 22 passed, 0 failed
-.venv/bin/python -m unittest discover -s tests       # 39 tests
+.venv/bin/python -m unittest discover -s tests       # 45 tests
 ```
 
 On Windows:
@@ -93,36 +94,45 @@ On Windows:
 .\tools\Validate-Range.ps1 -BaseUrl http://localhost:8080 -MetadataPort 8081
 ```
 
-The harness solves every challenge end to end, which also produces a complete
-event set (~140 events, 35 distinct event types) for tuning detections.
+## Send events to your SIEM
+
+Every request and exploitation attempt emits structured JSON. Configure HEC in
+`.env`, or point a Universal Forwarder at `logs/meridian-events.jsonl`. Full
+instructions in [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md).
+
+The highest-value detections are **UC-21** (kill-chain correlation, which
+separates a scanner from a human working the chain) and **UC-22** (a real data
+artifact actually left the application).
 
 ## Documentation
 
 | File | Audience | Contents |
 |---|---|---|
-| [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md) | **Instructors** — contains every flag | Solutions, commands, SPL, MITRE mapping, remediation |
+| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | **Operators** — contains every proof value | Walkthroughs, commands, SPL, MITRE, remediation |
 | [`OWASP_TOP10_TEST_COMMANDS.md`](OWASP_TOP10_TEST_COMMANDS.md) | Testers | One command per OWASP category |
 | [`BURP_SUITE_TEST_GUIDE.md`](BURP_SUITE_TEST_GUIDE.md) | Testers | Manual Repeater/Intruder procedure |
+| [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md) | Lab admins | Windows Server / IIS build and operations |
+| [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md) | Lab admins | Index, forwarder/HEC, TA placement, alerts |
 | [`splunk/USE_CASES.md`](splunk/USE_CASES.md) | Detection engineers | Validation searches |
-| [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md) | Lab admins | Full Windows Server / IIS build, operations, troubleshooting |
-| [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md) | Lab admins | Index, forwarder/HEC, TA placement, enabling the 21 detections |
 
 ## Layout
 
 ```
-app.py                     Flask factory, LAB_MODE guard, request telemetry
-labsite/catalog.py         Challenge definitions: flags, points, MITRE, detections
-labsite/challenges.py      The vulnerable endpoints
-labsite/ctf.py             Scoreboard and flag submission (not vulnerable)
-labsite/events.py          Event emission and payload classification
-labsite/db.py              Schema and synthetic seed data
-tools/validate_range.sh    Solves every challenge, submits every flag (bash)
-tools/Validate-Range.ps1   The same harness for Windows (PowerShell)
-tools/seed_fixtures.py     Regenerates flag store from the catalogue
-tools/check_playbook.py    Fails if the playbook drifts from the catalogue
-splunk/TA-helpag-vapt/     Field extraction and 21 detection use cases
+app.py                      Flask factory, LAB_MODE guard, request telemetry
+labsite/catalog.py          Findings: proof values, points, MITRE, detections
+labsite/business.py         The site, portal, partner API and staff area
+labsite/console.py          Operator console (token-gated, not vulnerable)
+labsite/events.py           Event emission and payload classification
+labsite/db.py               Schema and synthetic business data
+templates/                  Corporate site; console templates kept separate
+instance/                   Server-side secrets - the file-read targets
+documents/ backups/ internal/ uploads/   Artifact stores the findings reach
+tools/validate_range.sh     Recovers every artifact (bash)
+tools/Validate-Range.ps1    The same for Windows (PowerShell)
+tools/seed_fixtures.py      Regenerates on-disk artifacts from the catalogue
+tools/check_playbook.py     Fails if the playbook drifts from the catalogue
+splunk/TA-helpag-vapt/      Field extraction and 22 detection use cases
 ```
 
-Adding a challenge is a catalogue entry plus an endpoint — the board, scoreboard,
-progress API and MITRE matrix all read from `labsite/catalog.py`. Step-by-step in
-section 10 of the playbook.
+Adding a finding is a catalogue entry plus a business feature — section 9 of the
+playbook has the steps.

@@ -1,0 +1,4 @@
+mfs-export-nightly
+last run: 02:15 UTC
+retention: 14 days
+destination: //mfs-fs01/exports (pending migration to object storage)

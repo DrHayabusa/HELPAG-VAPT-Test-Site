@@ -1,0 +1,18 @@
+MERIDIAN FREIGHT SOLUTIONS - IT OPERATIONS RUNBOOK (INTERNAL)
+============================================================
+
+Platform
+  Web front end        IIS / reverse proxy to the application service
+  Application service  127.0.0.1:5005
+  Nightly export       /backups (autoindex still enabled - ticket OPS-4401)
+
+Known issues
+  OPS-4388  Portal sign-in still offers the pre-migration path (?legacy=1).
+            That path was never converted to parameterised queries.
+  OPS-4412  Depot connectivity check passes the host field to a shell.
+  OPS-4455  Session signing key is still the packaged default. Rotation blocked
+            on the partner gateway release.
+
+Out-of-hours access
+  Duty engineer escalation code: MERIDIAN{0ut_0f_h0urs_4cc3ss_c0d3_1n_runb00k}
+  Escalate to the on-call platform lead if the portal is unavailable > 15 min.

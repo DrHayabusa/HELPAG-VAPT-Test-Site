@@ -6,5 +6,7 @@ __pycache__/
 *.jsonl
 logs/
 .DS_Store
-uploads/*
+uploads/*.php
+uploads/*.jsp
+uploads/*.exe
 !uploads/.gitkeep

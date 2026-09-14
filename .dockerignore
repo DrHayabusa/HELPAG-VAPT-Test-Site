@@ -1,7 +1,10 @@
 .git
 .venv
 logs
-uploads
 *.pyc
 __pycache__
 .env
+# uploads/ ships its seeded applicant documents; exclude only test debris
+uploads/*.php
+uploads/*.jsp
+uploads/*.exe

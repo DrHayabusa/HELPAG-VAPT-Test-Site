@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}Reset your password - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<section><div class="wrap" style="max-width:520px">
+  <div class="eyebrow">Customer portal</div>
+  <h1>Reset your password</h1>
+  <p>Enter your username and we will send a reset link to the address on file.</p>
+  <form class="stack" id="reset-form">
+    <div class="field"><label for="username">Username</label>
+      <input id="username" name="username" required></div>
+    <button class="btn" type="submit">Send reset link</button>
+  </form>
+  <div id="reset-result" style="margin-top:18px"></div>
+</div></section>
+<script>
+document.getElementById('reset-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const res = await fetch('/portal/reset', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ username: document.getElementById('username').value })
+  });
+  const data = await res.json();
+  document.getElementById('reset-result').innerHTML =
+    '<div class="notice">' + (data.message || 'Request received.') +
+    (data.reset_link ? '<br><a href="' + data.reset_link + '">' + data.reset_link + '</a>' : '') +
+    '</div>';
+});
+</script>
+{% endblock %}

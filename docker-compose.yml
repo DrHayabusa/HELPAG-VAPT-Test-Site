@@ -1,16 +1,17 @@
 services:
-  ctf-web:
+  meridian-web:
     build: .
-    container_name: helpag-ctf-web
+    container_name: meridian-web
     environment:
       LAB_MODE: "true"
       LAB_HOST: "0.0.0.0"
       LAB_PORT: "5005"
-      LAB_DATABASE: /app/logs/ctf_lab.db
-      LAB_EVENT_LOG: /app/logs/helpag-events.jsonl
+      LAB_DATABASE: /app/logs/meridian.db
+      LAB_EVENT_LOG: /app/logs/meridian-events.jsonl
       LAB_UPLOAD_DIR: /app/uploads
-      LAB_SESSION_SECRET: ${LAB_SESSION_SECRET:-deliberately-weak-lab-secret}
-      LAB_JWT_KEY: ${LAB_JWT_KEY:-labkey}
+      LAB_SESSION_SECRET: ${LAB_SESSION_SECRET:-meridian-default-signing-key}
+      LAB_JWT_KEY: ${LAB_JWT_KEY:-mfs-partner-hs256}
+      RANGE_CONSOLE_TOKEN: ${RANGE_CONSOLE_TOKEN:-range-operator}
       SPLUNK_HEC_URL: ${SPLUNK_HEC_URL:-}
       SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
       SPLUNK_INDEX: ${SPLUNK_INDEX:-vapt_lab}
@@ -23,23 +24,23 @@ services:
     depends_on:
       - metadata
     networks:
-      - helpag-ctf
+      - meridian
     restart: unless-stopped
 
   # Stands in for a cloud instance metadata service. Reachable only from the
-  # lab network, which is what makes the SSRF challenge solvable.
+  # lab network, which is what makes the SSRF finding reachable.
   metadata:
     image: python:3.11-alpine
-    container_name: helpag-ctf-metadata
+    container_name: meridian-metadata
     command: ["python", "-m", "http.server", "8080", "--directory", "/data"]
     volumes:
       - ./metadata:/data:ro
     expose:
       - "8080"
     networks:
-      - helpag-ctf
+      - meridian
     restart: unless-stopped
 
 networks:
-  helpag-ctf:
-    name: helpag-ctf-lab
+  meridian:
+    name: meridian-lab

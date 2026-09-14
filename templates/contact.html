@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block title %}Contact - Meridian Freight Solutions{% endblock %}
+{% block body %}
+<div class="wrap"><div class="crumbs"><a href="/">Home</a> / Contact</div></div>
+<section style="padding-top:12px"><div class="wrap">
+  <div class="eyebrow">Contact</div>
+  <h1>Talk to our team</h1>
+  <div class="grid c2" style="margin-top:26px">
+    <div>
+      {% if sent %}
+      <div class="notice good">Thank you. Your enquiry has been added to our queue
+      and a member of the team will respond within one business day.</div>
+      {% endif %}
+      <form class="stack" action="/contact" method="post">
+        <div class="field"><label for="name">Your name</label><input id="name" name="name" required></div>
+        <div class="field"><label for="company">Company</label><input id="company" name="company"></div>
+        <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" required></div>
+        <div class="field"><label for="message">How can we help?</label>
+          <textarea id="message" name="message" rows="6" required></textarea></div>
+        <button class="btn" type="submit">Send enquiry</button>
+      </form>
+    </div>
+    <div class="card">
+      <h3>Head office</h3>
+      <p>Waalhaven Oostzijde 12<br>3087 BM Rotterdam<br>Netherlands</p>
+      <h3 style="margin-top:22px">Customer service</h3>
+      <p>+31 10 555 0140<br>service@meridianfreight.example</p>
+      <h3 style="margin-top:22px">Out of hours</h3>
+      <p>Duty desk +31 10 555 0199<br>Escalations follow the published runbook.</p>
+    </div>
+  </div>
+</div></section>
+{% endblock %}
