@@ -300,6 +300,20 @@ class TestTelemetry(RangeTestCase):
         self.client.get("/api/debug/config", headers={"X-Lab-Test-ID": "run-42"})
         self.assertIn("run-42", {event["test_id"] for event in self.events()})
 
+    def test_client_ip_is_taken_from_the_proxy_chain(self):
+        """Behind IIS/ARR the client is the FIRST X-Forwarded-For entry.
+
+        Every detection use case groups by source_ip, so a regression here
+        silently breaks the whole Splunk pack.
+        """
+        self.client.get("/api/debug/config",
+                        headers={"X-Forwarded-For": "10.10.5.42, 192.168.1.1, 127.0.0.1"})
+        self.assertIn("10.10.5.42", {event["source_ip"] for event in self.events()})
+
+    def test_client_ip_falls_back_to_remote_addr(self):
+        self.client.get("/api/debug/config")
+        self.assertTrue(all(event["source_ip"] for event in self.events()))
+
     def test_404s_are_recorded_for_scanner_detection(self):
         self.client.get("/definitely-not-a-real-path")
         self.assertIn("http_not_found", self.event_types())

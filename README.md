@@ -84,7 +84,13 @@ the use cases are in
 
 ```bash
 ./tools/validate_range.sh http://127.0.0.1:5005      # expects: 22 passed, 0 failed
-.venv/bin/python -m unittest discover -s tests       # 37 tests
+.venv/bin/python -m unittest discover -s tests       # 39 tests
+```
+
+On Windows:
+
+```powershell
+.\tools\Validate-Range.ps1 -BaseUrl http://localhost:8080 -MetadataPort 8081
 ```
 
 The harness solves every challenge end to end, which also produces a complete
@@ -98,7 +104,8 @@ event set (~140 events, 35 distinct event types) for tuning detections.
 | [`OWASP_TOP10_TEST_COMMANDS.md`](OWASP_TOP10_TEST_COMMANDS.md) | Testers | One command per OWASP category |
 | [`BURP_SUITE_TEST_GUIDE.md`](BURP_SUITE_TEST_GUIDE.md) | Testers | Manual Repeater/Intruder procedure |
 | [`splunk/USE_CASES.md`](splunk/USE_CASES.md) | Detection engineers | Validation searches |
-| [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md) | Lab admins | Full Windows build |
+| [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md) | Lab admins | Full Windows Server / IIS build, operations, troubleshooting |
+| [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md) | Lab admins | Index, forwarder/HEC, TA placement, enabling the 21 detections |
 
 ## Layout
 
@@ -109,7 +116,8 @@ labsite/challenges.py      The vulnerable endpoints
 labsite/ctf.py             Scoreboard and flag submission (not vulnerable)
 labsite/events.py          Event emission and payload classification
 labsite/db.py              Schema and synthetic seed data
-tools/validate_range.sh    Solves every challenge, submits every flag
+tools/validate_range.sh    Solves every challenge, submits every flag (bash)
+tools/Validate-Range.ps1   The same harness for Windows (PowerShell)
 tools/seed_fixtures.py     Regenerates flag store from the catalogue
 tools/check_playbook.py    Fails if the playbook drifts from the catalogue
 splunk/TA-helpag-vapt/     Field extraction and 21 detection use cases

@@ -1,13 +1,30 @@
-# Copy to $SPLUNK_HOME\etc\system\local\inputs.conf on the IIS server.
-# Replace C:\Lab if the repository was cloned elsewhere.
+# Universal Forwarder inputs for the HELP AG VAPT range.
+#
+# Copy to  %SPLUNK_HOME%\etc\apps\TA-helpag-vapt\local\inputs.conf
+# (preferred, so the app carries its own inputs) or to
+#          %SPLUNK_HOME%\etc\system\local\inputs.conf
+#
+# Adjust the repository path if you did not clone to C:\Lab.
+# Restart the forwarder afterwards:  & "$env:SPLUNK_HOME\bin\splunk.exe" restart
 
+# ---------------------------------------------------------------------------
+# IIS access logs - volume, scanner rate, HTTP status distribution
+# ---------------------------------------------------------------------------
 [monitor://C:\inetpub\logs\LogFiles\W3SVC*\u_ex*.log]
 disabled = 0
 index = vapt_lab
 sourcetype = iis
+crcSalt = <SOURCE>
 
+# ---------------------------------------------------------------------------
+# Application security events - everything the detection pack matches on
+# ---------------------------------------------------------------------------
 [monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\helpag-events.jsonl]
 disabled = 0
 index = vapt_lab
 sourcetype = helpag:owasp:json
+crcSalt = <SOURCE>
 
+# Do NOT enable this file input at the same time as Splunk HEC in the
+# application (SPLUNK_HEC_URL). Use one or the other, or every event is indexed
+# twice and every count-based alert threshold is wrong.

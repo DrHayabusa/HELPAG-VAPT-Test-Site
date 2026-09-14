@@ -11,6 +11,19 @@ import requests
 from flask import current_app, request, session
 
 
+def client_ip() -> str:
+    """The originating client address.
+
+    Behind IIS/ARR or any reverse proxy, X-Forwarded-For is a comma-separated
+    chain and the original client is the first entry. Every detection use case
+    groups by this field, so getting it wrong makes the whole pack useless.
+    """
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+
 def emit_event(event_type: str, severity: str = "info", **fields) -> dict:
     """Write one JSON event to the lab event log and optionally to Splunk HEC."""
     app = current_app
@@ -19,7 +32,7 @@ def emit_event(event_type: str, severity: str = "info", **fields) -> dict:
         "event_type": event_type,
         "severity": severity,
         "app": "helpag-ctf-lab",
-        "source_ip": request.headers.get("X-Forwarded-For", request.remote_addr),
+        "source_ip": client_ip(),
         "method": request.method,
         "path": request.path,
         "user_agent": request.headers.get("User-Agent", ""),

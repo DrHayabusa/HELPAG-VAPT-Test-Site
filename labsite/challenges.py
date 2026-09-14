@@ -376,7 +376,10 @@ def diagnostics_ping():
     """A03: attacker input concatenated into a shell command line."""
     host = request.args.get("host", "127.0.0.1")
     classes = classify_payload(host)
-    command = f"ping -c 1 -W 1 {host}"
+    # Flags differ per platform; the concatenation - the actual vulnerability -
+    # is identical either way. Windows chains with & and reads files with type.
+    ping_flags = "-n 1 -w 1000" if os.name == "nt" else "-c 1 -W 1"
+    command = f"ping {ping_flags} {host}"
     emit_event("command_injection_attempt" if "cmdi" in classes else "diagnostics_request",
                "critical" if "cmdi" in classes else "info",
                host_input=host, command_line=command, attack_classes=classes)
@@ -389,7 +392,8 @@ def diagnostics_ping():
         output, code = "timed out", 124
     emit_event("command_execution", "critical" if "cmdi" in classes else "info",
                command_line=command, exit_code=code, output_bytes=len(output),
-               process="sh", parent_process="python")
+               process="cmd.exe" if os.name == "nt" else "sh",
+               parent_process="python")
     if flag("rce-cmdi") in output:
         award("rce-cmdi", command_line=command)
     return Response(output or "(no output)", mimetype="text/plain")
