@@ -1,0 +1,5 @@
+# nightly export - do not ship
+db_path=/app/logs/ctf_lab.db
+session_secret=deliberately-weak-lab-secret
+svc_backup_password=summer2024
+archive_flag=HELPAG{b4ckup_f1l3_l3ft_b3h1nd}

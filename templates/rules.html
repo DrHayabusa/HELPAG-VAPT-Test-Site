@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Rules - HELP AG VAPT Range{% endblock %}
+{% block content %}
+<section class="hero"><h1>Range rules</h1></section>
+<section class="panel">
+<ol class="rules">
+  <li><b>Scope is this host only.</b> Do not pivot to anything else on the lab network.</li>
+  <li><b>No destructive actions.</b> Do not wipe the database, fill the disk or kill the service.
+      Other teams share this instance.</li>
+  <li><b>Flags are <code>HELPAG{...}</code>.</b> Submit them on the challenge board.
+      Do not share them between teams.</li>
+  <li><b>Do not read the source.</b> The repository contains every flag. Solving by
+      <code>git clone</code> teaches nothing.</li>
+  <li><b>Automated scanning is allowed and encouraged</b> - it is what the detection
+      use cases are there to catch.</li>
+  <li><b>Never expose this host to the Internet.</b> It has real command execution.</li>
+</ol>
+</section>
+<section class="panel"><h2>Scoring</h2>
+<p>Easy 50-100, medium 100-175, hard 175-200. First capture of a challenge is recorded
+as a first blood in the event stream. There is no negative marking and hints are free -
+they are printed on each card.</p></section>
+{% endblock %}

@@ -1,6 +1,6 @@
 # Splunk integration
 
-The site writes newline-delimited JSON to `logs/owasp-events.jsonl`. IIS writes
+The site writes newline-delimited JSON to `logs/helpag-events.jsonl`. IIS writes
 W3C access logs under `C:\inetpub\logs\LogFiles`. Send both to the `vapt_lab`
 index with a Splunk Universal Forwarder, or send application events directly
 through HTTP Event Collector (HEC).

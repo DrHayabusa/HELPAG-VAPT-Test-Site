@@ -1,5 +1,7 @@
-__pycache__
+.git
+.venv
+logs
+uploads
 *.pyc
-*.db
-*.jsonl
-
+__pycache__
+.env

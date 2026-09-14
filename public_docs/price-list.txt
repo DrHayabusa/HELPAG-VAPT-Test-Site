@@ -1,0 +1,3 @@
+Training laptop,900
+Security key,35
+Lab router,75

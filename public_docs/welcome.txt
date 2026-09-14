@@ -1,0 +1,2 @@
+HELP AG VAPT range - public document root.
+Nothing sensitive here.

@@ -73,7 +73,7 @@ source networks.
 ## 4. Add Splunk
 
 Follow `splunk/README.md`. The required inputs are IIS W3C logs with sourcetype
-`iis` and `logs\owasp-events.jsonl` with sourcetype `helpag:owasp:json`. Create
+`iis` and `logs\helpag-events.jsonl` with sourcetype `helpag:owasp:json`. Create
 the `vapt_lab` index first and validate `splunk/USE_CASES.md`. Add a unique
 `X-Lab-Test-ID` header to every Burp request.
 
@@ -109,7 +109,7 @@ py -3 --version
 If Splunk has no events, check the source first:
 
 ```powershell
-Get-Content .\logs\owasp-events.jsonl -Tail 10
+Get-Content .\logs\helpag-events.jsonl -Tail 10
 ```
 
 ## 7. Stop the lab

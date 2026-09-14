@@ -6,7 +6,7 @@ disabled = 0
 index = vapt_lab
 sourcetype = iis
 
-[monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\owasp-events.jsonl]
+[monitor://C:\Lab\HELPAG-VAPT-Test-Site\logs\helpag-events.jsonl]
 disabled = 0
 index = vapt_lab
 sourcetype = helpag:owasp:json

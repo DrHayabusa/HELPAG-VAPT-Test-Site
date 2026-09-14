@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}HELP AG VAPT Range{% endblock %}</title>
+<link rel="stylesheet" href="/static/lab.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="mark">//</span> HELP AG <span class="dim">VAPT RANGE</span></a>
+  <nav>
+    <a href="/">Challenges</a>
+    <a href="/scoreboard">Scoreboard</a>
+    <a href="/rules">Rules</a>
+    <a href="/guestbook">Guestbook</a>
+    <a href="/health">Health</a>
+  </nav>
+  <div class="team-slot" id="team-slot"></div>
+</header>
+<main>{% block content %}{% endblock %}</main>
+<footer>
+  Isolated training range. All identities, secrets and tokens are synthetic.
+  Never deploy on a production network.
+</footer>
+<script src="/static/lab.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
