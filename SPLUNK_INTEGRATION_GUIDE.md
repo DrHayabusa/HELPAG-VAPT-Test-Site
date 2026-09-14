@@ -38,7 +38,7 @@ A full validation run produces roughly **145 events across 34 distinct
 ```
 
 `source_ip`, `test_id` and `team` are what make this useful: they let you group a
-whole attack chain by attacker, by test run, or by CTF team.
+whole attack chain by attacker, by test run, or by team.
 
 ---
 
@@ -198,7 +198,7 @@ to the local JSONL file and a warning is logged. It is never retried.
 
 ## 6. Generate data and verify
 
-Run the full validation harness — it solves all 22 challenges and exercises
+Run the full validation harness — it recovers all 22 artifacts and exercises
 every detection at once:
 
 ```powershell
@@ -338,11 +338,11 @@ index=vapt_lab sourcetype=helpag:owasp:json
 | where stages>=3
 ```
 
-### CTF scoring correlated with technique
+### Range scoring correlated with technique
 
 ```spl
-index=vapt_lab sourcetype=helpag:owasp:json event_type=ctf_flag_captured duplicate=false
-| stats sum(points) as points values(challenge_title) as challenges
+index=vapt_lab sourcetype=helpag:owasp:json event_type=range_finding_confirmed duplicate=false
+| stats sum(points) as points values(finding_title) as findings
         values(mitre_techniques) as techniques by team source_ip
 | sort - points
 ```
@@ -439,4 +439,4 @@ Expected: `{"text":"Success","code":0}`.
 | `splunk/TA-helpag-vapt/default/macros.conf` | Search shorthands used in the docs |
 | `splunk/universal-forwarder/inputs.conf.example` | Monitor stanzas for both sources |
 | [`splunk/USE_CASES.md`](splunk/USE_CASES.md) | Validation searches |
-| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | Per-challenge SPL, MITRE mapping, remediation |
+| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | Per-finding SPL, MITRE mapping, remediation |

