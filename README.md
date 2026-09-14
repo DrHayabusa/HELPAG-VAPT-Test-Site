@@ -94,6 +94,12 @@ On Windows:
 .\tools\Validate-Range.ps1 -BaseUrl http://localhost:8080 -MetadataPort 8081
 ```
 
+Run a full staged intrusion (recon → exfiltration) to exercise the SIEM:
+
+```bash
+./tools/simulate_attack.sh http://127.0.0.1:5005
+```
+
 ## Send events to your SIEM
 
 Every request and exploitation attempt emits structured JSON. Configure HEC in
@@ -108,7 +114,9 @@ artifact actually left the application).
 
 | File | Audience | Contents |
 |---|---|---|
-| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | **Operators** — contains every proof value | Walkthroughs, commands, SPL, MITRE, remediation |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Everyone | Components, request flow, route map, data model, trust boundaries, telemetry |
+| [`ATTACK_SIMULATION.md`](ATTACK_SIMULATION.md) | Testers & detection engineers | Five-stage intrusion, commands, MITRE mapping, per-step detections |
+| [`ASSESSMENT_PLAYBOOK.md`](ASSESSMENT_PLAYBOOK.md) | **Operators** — contains every proof value | Per-finding walkthroughs, commands, SPL, MITRE, remediation |
 | [`OWASP_TOP10_TEST_COMMANDS.md`](OWASP_TOP10_TEST_COMMANDS.md) | Testers | One command per OWASP category |
 | [`BURP_SUITE_TEST_GUIDE.md`](BURP_SUITE_TEST_GUIDE.md) | Testers | Manual Repeater/Intruder procedure |
 | [`WINDOWS_IIS_DEPLOYMENT_GUIDE.md`](WINDOWS_IIS_DEPLOYMENT_GUIDE.md) | Lab admins | Windows Server / IIS build and operations |
@@ -128,6 +136,7 @@ templates/                  Corporate site; console templates kept separate
 instance/                   Server-side secrets - the file-read targets
 documents/ backups/ internal/ uploads/   Artifact stores the findings reach
 tools/validate_range.sh     Recovers every artifact (bash)
+tools/simulate_attack.sh    Staged adversary simulation, one source, SIEM-paced
 tools/Validate-Range.ps1    The same for Windows (PowerShell)
 tools/seed_fixtures.py      Regenerates on-disk artifacts from the catalogue
 tools/check_playbook.py     Fails if the playbook drifts from the catalogue
