@@ -1,124 +1,340 @@
-# Windows Server IIS deployment guide
+# Windows IIS deployment guide
 
-This guide deploys the intentionally vulnerable HELPAG site behind IIS for an
-isolated, authorized lab. Never publish this site to the Internet or bridge it
-to a production network.
+End-to-end build of the HELP AG VAPT CTF range on Windows Server, behind IIS,
+with Splunk integration. Follow [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md)
+after step 6.
+
+> **This host becomes intentionally vulnerable.** It has real OS command
+> execution, real server-side template injection and real arbitrary file read.
+> Build it on an isolated lab segment with no route to production and no
+> Internet-facing rule. Do not domain-join it to a production domain.
+
+---
 
 ## Architecture
 
-```text
-Burp / VAPT VM ---> http://WINDOWS_LAB_IP:8080 (IIS)
-                                      |
-                                      v
-                         127.0.0.1:5005 (Waitress/Flask)
-                                      |
-                           JSONL events + IIS W3C logs
-                                      |
-                                      v
-                              Splunk Forwarder/HEC
+```
+   lab clients                Windows Server
+        |
+        |  http://<server>:8080
+        v
+   +----------+      rewrite      +---------------------------+
+   |   IIS    | ----------------> | Waitress  127.0.0.1:5005  |  the CTF app
+   | ARR/URL  |                   +---------------------------+
+   | Rewrite  |                                |
+   +----------+                                | SSRF challenge target
+        |                                      v
+        | W3C access logs           +---------------------------+
+        v                           | http.server 127.0.0.1:8081|  metadata service
+   C:\inetpub\logs\LogFiles         +---------------------------+
+        |                                      |
+        |                   logs\helpag-events.jsonl (JSON security events)
+        +--------------------+-----------------+
+                             v
+                    Splunk Universal Forwarder  ->  index=vapt_lab
 ```
 
-IIS is the only lab-facing listener. The Python backend binds to localhost.
+Only IIS listens on a routable address. Both Python services bind to loopback.
 
-## 1. Prepare the Windows Server
+---
 
-Install:
+## 1. Prerequisites
 
-- Git for Windows.
-- Python 3.11 or newer with the `py` launcher and `pip`.
-- IIS (the included script enables its base role).
-- Microsoft IIS URL Rewrite 2.
-- IIS Application Request Routing (ARR).
-- Splunk Universal Forwarder if this server will forward local log files.
+| Requirement | Notes |
+|---|---|
+| Windows Server 2019 or 2022 | 2 vCPU / 4 GB RAM is plenty |
+| Python 3.11+ with the `py` launcher | Tick **Add Python to PATH** during install |
+| Git for Windows | Or copy the repository across manually |
+| IIS | The installer adds the required features |
+| **URL Rewrite 2.1** | <https://www.iis.net/downloads/microsoft/url-rewrite> |
+| **Application Request Routing 3.0** | <https://www.iis.net/downloads/microsoft/application-request-routing> |
+| Splunk Universal Forwarder | Only if shipping logs — see the Splunk guide |
 
-Use an isolated VM snapshot. Give the server a static private lab IP and block
-inbound traffic except from the VAPT/Burp and Splunk hosts. Port 5005 must never
-be opened in Windows Firewall.
+Install URL Rewrite **and** ARR before running the installer. Reboot afterwards
+if the installer prompts for one; `Get-WebGlobalModule` will not see the modules
+until IIS has restarted.
 
-## 2. Clone and deploy
+---
 
-Open **PowerShell as Administrator**:
+## 2. Clone the repository
+
+From an **elevated** PowerShell prompt:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\Lab | Out-Null
+New-Item -ItemType Directory -Force -Path C:\Lab | Out-Null
 git clone https://github.com/DrHayabusa/HELPAG-VAPT-Test-Site.git C:\Lab\HELPAG-VAPT-Test-Site
 Set-Location C:\Lab\HELPAG-VAPT-Test-Site
-Set-ExecutionPolicy -Scope Process Bypass
+```
+
+Keep the path short and free of spaces. Several challenges read flag files by
+relative path from the repository root.
+
+---
+
+## 3. Run the installer
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
 .\iis\Install-IIS-LabSite.ps1 -IisPort 8080
 ```
 
-The installer enables IIS and logging, creates the Python environment, installs
-dependencies, creates the IIS site, and registers a startup task for the local
-Waitress backend. No real credentials or production data are required.
+To let other machines on the isolated lab segment reach the range, add
+`-OpenFirewall`:
 
-## 3. Validate the deployment
+```powershell
+.\iis\Install-IIS-LabSite.ps1 -IisPort 8080 -OpenFirewall
+```
+
+The installer performs eight steps and prints each one:
+
+1. Installs IIS features (`Web-Server`, `Web-Http-Logging`, `Web-Mgmt-Tools`, `Web-Filtering`).
+2. Verifies URL Rewrite and ARR are present.
+3. Enables the ARR proxy, allows the rewrite rule to set `X-Forwarded-For`, and
+   unlocks request filtering so `web.config` can relax it.
+4. Creates `.venv` and installs `requirements.txt`.
+5. Creates `logs\` and `uploads\`.
+6. Creates the IIS app pool and site, and configures W3C logging with the fields
+   the Splunk searches expect.
+7. Registers two scheduled tasks that start at boot and restart on failure:
+   - `HELPAG-VAPT-Test-Site` — the CTF application on `127.0.0.1:5005`
+   - `HELPAG-VAPT-Test-Site-Metadata` — the SSRF target on `127.0.0.1:8081`
+8. Waits for `/health` and reports.
+
+Expected final output:
+
+```
+HELP AG VAPT range installed: http://localhost:8080
+Backend bound to 127.0.0.1:5005; metadata service to 127.0.0.1:8081.
+```
+
+---
+
+## 4. Why the IIS configuration matters
+
+Two settings in `iis/web.config` are not cosmetic:
+
+**`X-Forwarded-For`.** Behind a reverse proxy every request reaches the backend
+from `127.0.0.1`. Every Splunk detection in this pack groups by `source_ip`, so
+without the forwarded header the whole detection pack sees one client and
+becomes useless. The rewrite rule sets it and the application reads the first
+entry in the chain.
+
+**Relaxed request filtering.** IIS rejects `..`, double-encoded sequences and
+unusual verbs with a 404 *before* the request reaches the backend. Left at the
+defaults, the path traversal challenge and several encoded payloads are
+unsolvable and generate no telemetry. `allowDoubleEscaping="true"` and the
+cleared `hiddenSegments` list deliberately let them through.
+
+That second setting is a genuine weakening of IIS. It is correct for a range and
+wrong for anything else.
+
+---
+
+## 5. Verify the deployment
 
 ```powershell
 Invoke-RestMethod http://localhost:8080/health
-Get-Website -Name HELPAG-VAPT-Test-Site
-Get-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
-Get-NetTCPConnection -LocalPort 8080,5005 -State Listen
 ```
 
-Expected health response is `{"lab_mode":true,"status":"healthy"}`. Waitress
-must listen on `127.0.0.1:5005` only. From the VAPT VM run:
+Expected: `status healthy`, `lab_mode True`.
 
-```bash
-curl -i http://WINDOWS_LAB_IP:8080/health
-```
-
-Do not continue until this succeeds and the lab firewall blocks unapproved
-source networks.
-
-## 4. Add Splunk
-
-Follow `splunk/README.md`. The required inputs are IIS W3C logs with sourcetype
-`iis` and `logs\owasp-events.jsonl` with sourcetype `helpag:owasp:json`. Create
-the `vapt_lab` index first and validate `splunk/USE_CASES.md`. Add a unique
-`X-Lab-Test-ID` header to every Burp request.
-
-## 5. Test with Burp and VAPT Agent
-
-1. Add only `http://WINDOWS_LAB_IP:8080` to Burp scope.
-2. Follow `BURP_SUITE_TEST_GUIDE.md` for the manual OWASP Top 10 cases.
-3. Follow `OWASP_TOP10_TEST_COMMANDS.md` for repeatable CLI requests.
-4. In VAPT Agent, analyze the same IIS URL before any active scan.
-5. Confirm authorization and the test window in **Integration hub**.
-6. Keep concurrency low and exclude denial-of-service checks.
-7. Confirm every `X-Lab-Test-ID` appears in Splunk.
-
-## 6. Troubleshooting
-
-If IIS returns 502:
+Then solve every challenge automatically:
 
 ```powershell
-Get-ScheduledTaskInfo -TaskName HELPAG-VAPT-Test-Site
+.\tools\Validate-Range.ps1 -BaseUrl http://localhost:8080 -MetadataPort 8081
+```
+
+Expected final line:
+
+```
+== 22 passed, 0 failed ==
+```
+
+Check the forwarded client address is arriving — this is the single most common
+IIS misconfiguration for this range:
+
+```powershell
+Get-Content .\logs\helpag-events.jsonl -Tail 1 | ConvertFrom-Json | Select-Object source_ip, event_type
+```
+
+`source_ip` must be the **client's** address, not `127.0.0.1`. If it shows
+`127.0.0.1`, see Troubleshooting below.
+
+Browse to `http://<server>:8080/` from a lab client, register a team and submit a
+flag to confirm the scoreboard works end to end.
+
+---
+
+## 6. Day-to-day operations
+
+### Start, stop, restart
+
+```powershell
+# Application backend
+Start-ScheduledTask   -TaskName HELPAG-VAPT-Test-Site
+Stop-ScheduledTask    -TaskName HELPAG-VAPT-Test-Site
+
+# SSRF metadata service
+Start-ScheduledTask   -TaskName HELPAG-VAPT-Test-Site-Metadata
+Stop-ScheduledTask    -TaskName HELPAG-VAPT-Test-Site-Metadata
+
+# IIS front end
+Start-Website -Name HELPAG-VAPT-Test-Site
+Stop-Website  -Name HELPAG-VAPT-Test-Site
+Restart-WebAppPool -Name HELPAG-VAPT-Test-Site
+```
+
+### Reset the range between sessions
+
+Clears the scoreboard, guestbook, uploads and event log. Flags do not change.
+
+```powershell
+Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+Remove-Item .\logs\ctf_lab.db, .\logs\helpag-events.jsonl -ErrorAction SilentlyContinue
+Get-ChildItem .\uploads\ -Exclude .gitkeep | Remove-Item -Force
 Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
-Invoke-RestMethod http://127.0.0.1:5005/health
 ```
 
-If URL Rewrite fails, install URL Rewrite 2 and ARR, run `iisreset`, and rerun
-the installer. If Python fails:
+### Watch the range live
 
 ```powershell
-py -3 --version
+Get-Content .\logs\helpag-events.jsonl -Wait -Tail 20 |
+    ForEach-Object { $_ | ConvertFrom-Json | Select-Object timestamp, source_ip, event_type, severity }
+
+Invoke-RestMethod http://localhost:8080/api/ctf/scoreboard |
+    Select-Object -ExpandProperty teams | Format-Table rank, team, solves, points
+```
+
+### Update to a newer build
+
+```powershell
+Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+git pull
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+.\tools\Validate-Range.ps1 -BaseUrl http://localhost:8080 -MetadataPort 8081
 ```
 
-If Splunk has no events, check the source first:
+---
+
+## 7. Windows-specific challenge differences
+
+Two challenges need different payloads under `cmd.exe`. Both are noted in
+[`CTF_PLAYBOOK.md`](CTF_PLAYBOOK.md); tell players if you are running a
+Windows range.
+
+| Challenge | Linux payload | Windows payload |
+|---|---|---|
+| `rce-cmdi` | `host=127.0.0.1; cat flagstore/cmdi.flag` | `host=127.0.0.1 & type flagstore\cmdi.flag` |
+| `rce-ssti` | `os.popen('cat flagstore/ssti.flag').read()` | `__builtins__.open('flagstore/ssti.flag').read()` |
+
+`cmd.exe` chains with `&`, not `;`, and its `type` command rejects forward
+slashes. The SSTI payload avoids the shell entirely and works on both platforms.
+The application selects the correct `ping` flags for the platform automatically.
+
+---
+
+## 8. Troubleshooting
+
+### `source_ip` is `127.0.0.1` for every event
+
+The rewrite rule is not setting the forwarded header. Confirm the server
+variable is allowed:
 
 ```powershell
-Get-Content .\logs\owasp-events.jsonl -Tail 10
+& $env:windir\System32\inetsrv\appcmd.exe list config `
+  -section:system.webServer/rewrite/allowedServerVariables
 ```
 
-## 7. Stop the lab
+`HTTP_X_FORWARDED_FOR` must appear. If it does not:
+
+```powershell
+& $env:windir\System32\inetsrv\appcmd.exe set config `
+  -section:system.webServer/rewrite/allowedServerVariables `
+  /+"[name='HTTP_X_FORWARDED_FOR']" /commit:apphost
+iisreset
+```
+
+### 502.3 or 500.52 from IIS
+
+ARR is not installed or the proxy is disabled:
+
+```powershell
+& $env:windir\System32\inetsrv\appcmd.exe set config -section:system.webServer/proxy /enabled:"True" /commit:apphost
+iisreset
+```
+
+### 503 with `"Lab mode is disabled"`
+
+The backend is running without `LAB_MODE=true`. That is the safety guard, not a
+bug. Restart through the scheduled task rather than by hand — `Start-LabSite.ps1`
+sets the variable:
+
+```powershell
+Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+```
+
+### Path traversal challenge returns 404 from IIS, not the app
+
+Request filtering is still blocking `..`. Confirm `web.config` is in the site's
+physical path (`C:\Lab\HELPAG-VAPT-Test-Site\iis`) and that the section is
+unlocked:
+
+```powershell
+& $env:windir\System32\inetsrv\appcmd.exe unlock config -section:system.webServer/security/requestFiltering
+iisreset
+```
+
+### The SSRF challenge fails
+
+The metadata service is not running. Check and restart:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8081/latest/meta-data/ -UseBasicParsing
+Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site-Metadata
+```
+
+Players must target the port the service is actually on — pass
+`-MetadataPort` to the validator to match.
+
+### The backend will not start
+
+Run it in the foreground to see the error:
+
+```powershell
+Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+.\iis\Start-LabSite.ps1
+```
+
+A `lxml` build failure means pip could not fetch a wheel; confirm the server can
+reach PyPI, or install `lxml` from a local wheel.
+
+### Nothing is reaching the site from other lab hosts
+
+The firewall rule was not created. Either rerun the installer with
+`-OpenFirewall` or add it manually:
+
+```powershell
+New-NetFirewallRule -DisplayName "HELPAG lab" -Direction Inbound -Protocol TCP `
+  -LocalPort 8080 -Action Allow -Profile Domain,Private
+```
+
+---
+
+## 9. Uninstall
 
 ```powershell
 Stop-Website -Name HELPAG-VAPT-Test-Site
-Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+Remove-Website -Name HELPAG-VAPT-Test-Site
+Remove-WebAppPool -Name HELPAG-VAPT-Test-Site
+Unregister-ScheduledTask -TaskName HELPAG-VAPT-Test-Site -Confirm:$false
+Unregister-ScheduledTask -TaskName HELPAG-VAPT-Test-Site-Metadata -Confirm:$false
+Remove-NetFirewallRule -DisplayName "HELPAG-VAPT-Test-Site (lab only)" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force C:\Lab\HELPAG-VAPT-Test-Site
 ```
 
-Preserve Burp exports, IIS logs, JSONL events, and Splunk searches with the
-engagement record before reverting the VM snapshot.
+Rebuild the VM if you want to be certain nothing from the range persists.
 
+---
+
+Next: [`SPLUNK_INTEGRATION_GUIDE.md`](SPLUNK_INTEGRATION_GUIDE.md).

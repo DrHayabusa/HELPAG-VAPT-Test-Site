@@ -1,39 +1,45 @@
 services:
-  vulnerable-web:
+  ctf-web:
     build: .
+    container_name: helpag-ctf-web
     environment:
       LAB_MODE: "true"
       LAB_HOST: "0.0.0.0"
       LAB_PORT: "5005"
-      LAB_DATABASE: /app/logs/owasp_lab.db
-      LAB_EVENT_LOG: /app/logs/owasp-events.jsonl
+      LAB_DATABASE: /app/logs/ctf_lab.db
+      LAB_EVENT_LOG: /app/logs/helpag-events.jsonl
+      LAB_UPLOAD_DIR: /app/uploads
+      LAB_SESSION_SECRET: ${LAB_SESSION_SECRET:-deliberately-weak-lab-secret}
+      LAB_JWT_KEY: ${LAB_JWT_KEY:-labkey}
       SPLUNK_HEC_URL: ${SPLUNK_HEC_URL:-}
       SPLUNK_HEC_TOKEN: ${SPLUNK_HEC_TOKEN:-}
       SPLUNK_INDEX: ${SPLUNK_INDEX:-vapt_lab}
       SPLUNK_SOURCETYPE: ${SPLUNK_SOURCETYPE:-helpag:owasp:json}
       SPLUNK_VERIFY_TLS: ${SPLUNK_VERIFY_TLS:-false}
     ports:
-      - "127.0.0.1:5005:5005"
+      - "${LAB_BIND:-127.0.0.1}:5005:5005"
     volumes:
       - ./logs:/app/logs
     depends_on:
       - metadata
     networks:
-      - owasp-lab
+      - helpag-ctf
     restart: unless-stopped
 
+  # Stands in for a cloud instance metadata service. Reachable only from the
+  # lab network, which is what makes the SSRF challenge solvable.
   metadata:
     image: python:3.11-alpine
+    container_name: helpag-ctf-metadata
     command: ["python", "-m", "http.server", "8080", "--directory", "/data"]
     volumes:
       - ./metadata:/data:ro
     expose:
       - "8080"
     networks:
-      - owasp-lab
+      - helpag-ctf
     restart: unless-stopped
 
 networks:
-  owasp-lab:
-    name: helpag-owasp-lab
-
+  helpag-ctf:
+    name: helpag-ctf-lab

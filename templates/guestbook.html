@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Guestbook - HELP AG VAPT Range{% endblock %}
+{% block content %}
+<section class="hero"><h1>Guestbook</h1>
+<p class="lede">Leave a message for the range operators. Entries are reviewed by an
+administrator at <code>/admin/review</code>.</p></section>
+<section class="panel">
+  <form method="post" action="/guestbook" class="stack">
+    <input name="author" placeholder="Your name" maxlength="64">
+    <textarea name="message" rows="4" placeholder="Your message"></textarea>
+    <button type="submit">Sign guestbook</button>
+  </form>
+</section>
+<section class="panel"><h2>Recent entries</h2>
+<ul class="entries">{{ entries|safe }}</ul></section>
+{% endblock %}

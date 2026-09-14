@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Scoreboard - HELP AG VAPT Range{% endblock %}
+{% block content %}
+<section class="hero"><h1>Scoreboard</h1>
+<p class="lede">Live standings. Refreshes every ten seconds.</p></section>
+<section class="panel">
+  <table class="scores"><thead><tr>
+    <th>#</th><th>Team</th><th>Solves</th><th>Points</th><th>Last capture</th>
+  </tr></thead><tbody id="score-body"><tr><td colspan="5" class="dim">Loading…</td></tr></tbody></table>
+</section>
+<section class="panel"><h2>Challenge progress</h2>
+  <table class="scores"><thead><tr>
+    <th>Challenge</th><th>Category</th><th>Points</th><th>Teams solved</th>
+  </tr></thead><tbody id="progress-body"></tbody></table>
+</section>
+{% endblock %}
+{% block scripts %}<script>initScoreboard();</script>{% endblock %}

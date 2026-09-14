@@ -1,38 +1,32 @@
-# Splunk integration
+# Splunk content
 
-The site writes newline-delimited JSON to `logs/owasp-events.jsonl`. IIS writes
-W3C access logs under `C:\inetpub\logs\LogFiles`. Send both to the `vapt_lab`
-index with a Splunk Universal Forwarder, or send application events directly
-through HTTP Event Collector (HEC).
+Full setup instructions live in
+[`SPLUNK_INTEGRATION_GUIDE.md`](../SPLUNK_INTEGRATION_GUIDE.md) — index creation,
+Universal Forwarder vs HEC, TA placement, verification and alert enablement.
 
-## Universal Forwarder method (recommended for IIS)
+This directory contains the content itself:
 
-1. Create the `vapt_lab` index in Splunk.
-2. Install a Universal Forwarder on the IIS server and configure its receiving
-   indexer or deployment server.
-3. Copy `universal-forwarder/inputs.conf.example` to
-   `$SPLUNK_HOME\etc\system\local\inputs.conf` and correct the clone path.
-4. Copy `TA-helpag-vapt` to `$SPLUNK_HOME\etc\apps\TA-helpag-vapt` on the
-   parsing tier/search head as appropriate for your Splunk topology.
-5. Restart Splunk/Universal Forwarder and verify:
+| Path | Contents |
+|---|---|
+| `TA-helpag-vapt/default/props.conf` | Field extraction for `helpag:owasp:json` and `iis` |
+| `TA-helpag-vapt/default/savedsearches.conf` | 21 detection use cases (UC-01 … UC-21), all shipped **disabled** |
+| `TA-helpag-vapt/default/macros.conf` | Search shorthands used throughout the documentation |
+| `universal-forwarder/inputs.conf.example` | Monitor stanzas for the app events and IIS logs |
+| [`USE_CASES.md`](USE_CASES.md) | Validation searches to run after a test |
+
+## The one thing to get right
+
+`INDEXED_EXTRACTIONS = json` is a **parsing-time** setting. For file-monitored
+data, parsing happens on the forwarder — so the TA must be installed on the
+Universal Forwarder as well as the search head. Install it only on the search
+head and events arrive as raw text with no fields, and every detection silently
+matches nothing.
+
+## Quick verification
 
 ```spl
-index=vapt_lab (sourcetype=iis OR sourcetype=helpag:owasp:json)
-| stats count by sourcetype
+index=vapt_lab earliest=-15m | stats count by sourcetype
+index=vapt_lab sourcetype=helpag:owasp:json earliest=-15m | stats count by event_type severity
 ```
 
-## Direct HEC method
-
-Create an enabled HEC token restricted to the `vapt_lab` index. Set these
-variables for the backend service:
-
-```powershell
-[Environment]::SetEnvironmentVariable("SPLUNK_HEC_URL", "https://splunk.lab:8088/services/collector/event", "Machine")
-[Environment]::SetEnvironmentVariable("SPLUNK_HEC_TOKEN", "REPLACE_ME", "Machine")
-[Environment]::SetEnvironmentVariable("SPLUNK_INDEX", "vapt_lab", "Machine")
-[Environment]::SetEnvironmentVariable("SPLUNK_SOURCETYPE", "helpag:owasp:json", "Machine")
-```
-
-Restart the scheduled task after setting the variables. Do not enable both HEC
-and file monitoring for application JSON unless duplicate events are desired.
-
+If `event_type` does not exist as a field, revisit TA placement above.
