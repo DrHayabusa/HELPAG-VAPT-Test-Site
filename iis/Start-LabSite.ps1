@@ -43,4 +43,11 @@ if ($env:SPLUNK_HEC_URL) {
 # Working directory matters: the traversal, SSTI and command-injection
 # challenges read flag files by relative path.
 Set-Location $RepositoryPath
-& $venvPython -m waitress --listen=127.0.0.1:5005 app:app
+# --trusted-proxy is not optional behind IIS. Waitress strips X-Forwarded-*
+# from every request unless the proxy is declared trusted, so without it the
+# app falls back to REMOTE_ADDR and records 127.0.0.1 as the source_ip for
+# every tester - which makes every Splunk detection in the pack useless.
+& $venvPython -m waitress --listen=127.0.0.1:5005 `
+    --trusted-proxy=127.0.0.1 `
+    --trusted-proxy-headers=x-forwarded-for `
+    app:app

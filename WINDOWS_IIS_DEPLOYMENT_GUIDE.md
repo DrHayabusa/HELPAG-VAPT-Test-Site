@@ -254,8 +254,25 @@ The application selects the correct `ping` flags for the platform automatically.
 
 ### `source_ip` is `127.0.0.1` for every event
 
-The rewrite rule is not setting the forwarded header. Confirm the server
-variable is allowed:
+**Check Waitress first.** It strips `X-Forwarded-*` from every request unless
+the proxy is declared trusted, so IIS can be configured perfectly and the
+header still never reaches the application. `Start-LabSite.ps1` passes
+`--trusted-proxy=127.0.0.1 --trusted-proxy-headers=x-forwarded-for`; confirm
+they are still there, and that the backend was restarted through the scheduled
+task after any edit. To prove which layer is dropping the header, bypass IIS:
+
+```powershell
+Invoke-WebRequest -Uri "http://127.0.0.1:5005/about?xfftest=yes" `
+  -Headers @{"X-Forwarded-For"="8.8.8.8"} -UseBasicParsing | Out-Null
+Select-String -Path .\logs\meridian-events.jsonl -Pattern "xfftest=yes" |
+  Select-Object -Last 1 -ExpandProperty Line
+```
+
+`8.8.8.8` means Waitress is passing the header and the problem is the rewrite
+rule below. `127.0.0.1` means Waitress is still stripping it.
+
+If Waitress is configured correctly, the rewrite rule is not setting the
+header. Confirm the server variable is allowed:
 
 ```powershell
 & $env:windir\System32\inetsrv\appcmd.exe list config `
