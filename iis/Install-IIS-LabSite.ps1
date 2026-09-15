@@ -5,7 +5,7 @@
 .DESCRIPTION
     IIS is the only lab-facing listener. It reverse-proxies to a Waitress
     backend on 127.0.0.1:5005 and to a loopback metadata service on
-    127.0.0.1:8080 that the SSRF challenge targets.
+    127.0.0.1:8081 that the SSRF challenge targets.
 
     Run from an elevated PowerShell prompt.
 
@@ -23,7 +23,7 @@
 param(
     [string]$SiteName = "HELPAG-VAPT-Test-Site",
     [int]$IisPort = 8080,
-    [int]$MetadataPort = 8080,
+    [int]$MetadataPort = 8081,
     [string]$RepositoryPath = (Split-Path -Parent $PSScriptRoot),
     [switch]$OpenFirewall
 )

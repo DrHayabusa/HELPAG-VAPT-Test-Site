@@ -29,9 +29,11 @@ $env:LAB_DATABASE   = Join-Path $logDirectory "meridian.db"
 $env:LAB_EVENT_LOG  = Join-Path $logDirectory "meridian-events.jsonl"
 $env:LAB_UPLOAD_DIR = $uploadDirectory
 
-# Deliberately weak - challenge auth-weak-secret expects players to recover it.
-if (-not $env:LAB_SESSION_SECRET) { $env:LAB_SESSION_SECRET = "deliberately-weak-lab-secret" }
-if (-not $env:LAB_JWT_KEY)        { $env:LAB_JWT_KEY = "labkey" }
+# Deliberately weak - findings weak-session-secret and jwt-none expect a
+# tester to recover these from the estate. They must match the values the site
+# leaks through /.env and instance\app-secrets.ini, or those findings break.
+if (-not $env:LAB_SESSION_SECRET) { $env:LAB_SESSION_SECRET = "meridian-default-signing-key" }
+if (-not $env:LAB_JWT_KEY)        { $env:LAB_JWT_KEY = "mfs-partner-hs256" }
 
 # Splunk HEC (optional). Set these as Machine-scope variables; see splunk\README.md.
 if ($env:SPLUNK_HEC_URL) {

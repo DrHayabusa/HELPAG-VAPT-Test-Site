@@ -103,8 +103,8 @@ The installer performs eight steps and prints each one:
 Expected final output:
 
 ```
-Meridian target installed: http://localhost:8080
-Backend bound to 127.0.0.1:5005; metadata service to 127.0.0.1:8081.
+HELP AG VAPT range installed: http://localhost:8080
+Backend bound to 127.0.0.1:5005; metadata service to 127.0.0.1:8081. IIS is the only lab-facing listener.
 ```
 
 ---
@@ -160,8 +160,10 @@ Get-Content .\logs\meridian-events.jsonl -Tail 1 | ConvertFrom-Json | Select-Obj
 `source_ip` must be the **client's** address, not `127.0.0.1`. If it shows
 `127.0.0.1`, see Troubleshooting below.
 
-Browse to `http://<server>:8080/` from a lab client, register a team and submit a
-flag to confirm the scoreboard works end to end.
+Browse to `http://<server>:8080/` from a lab client — you should get the Meridian
+Freight Solutions homepage with no sign the host is a range. Confirm the operator
+console separately at `http://<server>:8080/range/console?token=range-operator`;
+the target site never links to it.
 
 ---
 
@@ -186,7 +188,7 @@ Restart-WebAppPool -Name HELPAG-VAPT-Test-Site
 
 ### Reset the range between sessions
 
-Clears the scoreboard, guestbook, uploads and event log. Flags do not change.
+Clears the scoreboard, guestbook, uploads and event log. Proof values do not change.
 
 ```powershell
 Stop-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
@@ -194,6 +196,20 @@ Remove-Item .\logs\meridian.db, .\logs\meridian-events.jsonl -ErrorAction Silent
 Get-ChildItem .\uploads\ -Exclude .gitkeep | Remove-Item -Force
 Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
 ```
+
+### Change the operator console token
+
+The console at `/range/console` falls back to `range-operator`, which is
+published in this repository. Before a live exercise set a Machine-scope
+variable — the scheduled task runs as SYSTEM and picks it up on restart:
+
+```powershell
+[Environment]::SetEnvironmentVariable("RANGE_CONSOLE_TOKEN", "<your-token>", "Machine")
+Stop-ScheduledTask  -TaskName HELPAG-VAPT-Test-Site
+Start-ScheduledTask -TaskName HELPAG-VAPT-Test-Site
+```
+
+Pass the same value to the validator with `-ConsoleToken <your-token>`.
 
 ### Watch the range live
 

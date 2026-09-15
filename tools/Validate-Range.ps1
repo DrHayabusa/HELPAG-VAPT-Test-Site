@@ -13,7 +13,7 @@
 param(
     [string]$BaseUrl = "http://localhost:8080",
     [string]$RepositoryPath = (Split-Path -Parent $PSScriptRoot),
-    [int]$MetadataPort = 8080,
+    [int]$MetadataPort = 8081,
     [string]$Team = "validation-bot",
     [string]$TestId = "ps-validation",
     [string]$ConsoleToken = $(if ($env:RANGE_CONSOLE_TOKEN) { $env:RANGE_CONSOLE_TOKEN } else { "range-operator" })

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Serves the synthetic instance-metadata tree on 127.0.0.1:8080.
+    Serves the synthetic instance-metadata tree on 127.0.0.1:8081.
 
 .DESCRIPTION
     The SSRF challenge (ssrf-metadata) needs an internal HTTP service to reach.
@@ -10,7 +10,7 @@
 #>
 param(
     [string]$RepositoryPath = (Split-Path -Parent $PSScriptRoot),
-    [int]$Port = 8080
+    [int]$Port = 8081
 )
 
 $ErrorActionPreference = "Stop"
