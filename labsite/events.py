@@ -11,6 +11,22 @@ import requests
 from flask import current_app, request, session
 
 
+def strip_port(address: str) -> str:
+    """Drop a trailing port from a forwarded address.
+
+    IIS/ARR writes the client as `10.0.0.5:52104`. The port is ephemeral and
+    changes every request, so leaving it attached turns a per-attacker grouping
+    into a per-request one. IPv6 arrives bracketed as `[::1]:52104`; a bare IPv6
+    address has no port to remove.
+    """
+    if address.startswith("["):
+        return address[1:].split("]", 1)[0]
+    host, separator, port = address.rpartition(":")
+    if separator and port.isdigit() and ":" not in host:
+        return host
+    return address
+
+
 def client_ip() -> str:
     """The originating client address.
 
@@ -20,7 +36,7 @@ def client_ip() -> str:
     """
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return strip_port(forwarded.split(",")[0].strip())
     return request.remote_addr or "unknown"
 
 

@@ -405,6 +405,13 @@ class TestTelemetry(TargetTestCase):
         self.assertTrue(disclosures)
         self.assertEqual(disclosures[0]["finding_id"], "idor-shipment")
 
+    def test_forwarded_client_port_is_stripped(self):
+        """IIS/ARR writes the client as ip:port. The ephemeral port would turn
+        every detection's per-attacker grouping into a per-request one."""
+        self.client.get("/status/diagnostics",
+                        headers={"X-Forwarded-For": "10.20.39.14:46550"})
+        self.assertIn("10.20.39.14", {e["source_ip"] for e in self.events()})
+
 
 if __name__ == "__main__":
     unittest.main()
