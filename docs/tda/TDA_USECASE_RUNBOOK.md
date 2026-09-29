@@ -17,7 +17,16 @@ only (EICAR, benign files, test PII, Atomic Red Team, reversible registry keys).
 | Web: UC0228, UC0229 | Cloud: UC0458/0215/0327, M365 spray, MFA, VM abuse → Azure/M365 creds + Az CLI |
 | | Firewall: UC0110 → firewall admin login |
 
-Run in **PowerShell as Administrator** unless noted.
+## Where to run everything
+
+Use one working folder so every command (including `.\file` ones) behaves the same.
+**Open PowerShell as Administrator, then once:**
+```powershell
+mkdir C:\TDA -Force ; cd C:\TDA
+```
+Run **all host/network/web/mail/cloud tests from `C:\TDA`** in that Admin
+PowerShell. Put any input files (`users.txt`, `MSOLSpray.ps1`) in `C:\TDA` first.
+**Only UC0110 (firewall)** is done on the firewall itself, not this machine.
 
 **Two options per test where possible:** a **Manual** method (no tools) and an
 **Atomic Red Team (ART)** method. For any ART line, first:
