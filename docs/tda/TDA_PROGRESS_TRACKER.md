@@ -31,21 +31,22 @@ Legend: ✅ Done · 🟡 Executed – confirm in SOC · ⛔ Blocked (needs custo
 | UC | Name | Status | Notes |
 |----|------|--------|-------|
 | UC0149 | Multiple AV Infections | 🟡 | EICAR + 6 separate offensive-tool zips extracted. CrowdStrike is behavioral/detect-mode — confirm detections in Falcon console; perimeter also blocked direct tool downloads (prevention). |
-| UC0141 | C2C Traffic | 🟡 | Palo Alto C2 test URL reached/blocked at perimeter. **If query filters `action=allow`, a block won't match** — ask customer to set the C2 URL category to **Alert** for the window, then re-run. |
+| UC0141 | C2C Traffic | 🟡 | Palo Alto C2 test URL (`/test-command-and-control`) **reached/allowed** via curl.exe — logged as command-and-control category (`action=allow`). Confirm the C2 log for source IP + time. |
+| UC0043 | Threat Activity Detected | 🟡 | Palo Alto malware test URL (`/test-malware`) **reached/allowed** via curl.exe — logged as malware category. Confirm the log; adjust if the query targets EDR threat / threat-intel instead. |
 | UC0249 | Prohibited Port Activity | 🟡 | PowerShell TCP to ports 6667/31337/12345/6969/23432. Confirm firewall logged (allow=detection, blocked=prevention). |
 | UC0054 | Vertical Port Scan | 🟡 | `nmap -sS -p 1-150 <IP>`. Confirm IDS/firewall scan detection + threshold. |
 
-## Blocked — need customer prerequisites
+## Remaining — assignment / status
 
-| UC | Name | Blocker |
-|----|------|---------|
-| SPLUC0107 | Suspected Phishing Email | No send method / monitored recipient mailbox |
-| UC0222 | Suspicious Email Attachment | Same — no mail path |
-| UC0575 | Multiple DLP / Malware by Mail | Same — no mail path |
-| UC0215 | Explicit MFA Deny | No test account with MFA on a controlled phone |
-| UC1147 | MFA Takeover | No test account |
-| UC0458 | Azure Activity CRUD | Customer executes in tenant (call) |
-| UC0327 | Entra Privileged Access Outside PIM | Customer executes in tenant (call) |
+| UC | Name | Status |
+|----|------|--------|
+| SPLUC0107 | Suspected Phishing Email | Assigned to Santhosh |
+| UC0222 | Suspicious Email Attachment | Assigned to Santhosh |
+| UC0215 | Explicit MFA Deny | Pending — need a test user with MFA on a phone |
+| UC1147 | MFA Takeover | Pending — need a test user to add an MFA device |
+| UC0575 | Multiple DLP / Malware by Mail | Not applicable |
+| UC0458 | Azure Activity CRUD | Not applicable |
+| UC0327 | Entra Privileged Access Outside PIM | Not applicable |
 
 ## Not started (doable, deferred)
 
