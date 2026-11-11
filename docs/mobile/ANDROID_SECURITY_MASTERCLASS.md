@@ -11,11 +11,11 @@ Structure:
   static analysis.
 - **Chapters 14–33: The attacks** — each one: *what it is → why it is vulnerable →
   techniques (with commands and examples)*.
-- **Chapters 34–36: Hands-on bypass & patching workshop** — hunting hardcoded
+- **Chapters 34–37: Hands-on workshop & cloud testing** — hunting hardcoded
   credentials (OWASP M1), a Frida bypass cookbook (SSL pinning, root, emulator —
-  with ready scripts), and manual patching with Ghidra + rebuild + re-sign for when
-  Frida is blocked.
-- **Chapter 37: Methodology checklist.**
+  with ready scripts), manual patching with Ghidra + rebuild + re-sign for when
+  Frida is blocked, and cloud/Firebase/backend misconfiguration testing.
+- **Chapter 38: Methodology checklist.**
 
 ---
 
@@ -1602,7 +1602,94 @@ installs it, replacing the old one.
 
 ---
 
-# CHAPTER 37 — Methodology checklist
+# CHAPTER 37 — Cloud, Firebase, and backend misconfiguration
+
+**What it is.** A mobile app is only the front end. Behind it sit **cloud services** —
+Firebase, AWS S3, Google Cloud Storage, Azure, custom APIs. These are often
+**misconfigured**: left open to the public, missing access rules, or exposing more than
+they should. And because the app has to **talk to them**, the app itself tells you exactly
+where they are.
+
+**Why it is vulnerable.** Developers assume "only our app calls this, so it's safe." But
+the endpoints and project IDs are **inside the app**, and you can read them (Chapter 34).
+Once you have the address, you talk to the cloud service **directly** — skipping the app —
+and if the service trusts anyone who asks, you get the data.
+
+## 37.1 Find the backend first
+Pull the endpoints out of the app:
+```
+unzip base.apk -d app_out
+grep -rinE "firebaseio|firestore|googleapis|amazonaws|s3\.|blob\.core\.windows|appspot|graphql" app_out/
+strings -n 6 app_out/lib/arm64-v8a/*.so | grep -iE "http|firebaseio|amazonaws"
+cat app_out/assets/google-services.json 2>/dev/null     # Firebase project config
+```
+`google-services.json` gives you the **Firebase project id**, the database URL, the
+storage bucket, and the Firebase **API key**.
+
+## 37.2 Firebase Realtime Database (the classic)
+A Firebase Realtime Database lives at `https://<project>.firebaseio.com`. If its rules are
+left open (`".read": true`), **anyone** can read it just by adding `.json`:
+```
+curl "https://<project-id>.firebaseio.com/.json"
+```
+- Returns JSON data → **open database** = data exposure.
+- Returns `{"error":"Permission denied"}` → rules are set = good.
+
+Write test (only with a harmless marker, only if authorised):
+```
+curl -X PUT -d '{"pentest":"poc"}' "https://<project-id>.firebaseio.com/pentest_marker.json"
+```
+If it writes → the database is world-writable. Note it; **don't dump or alter real data.**
+**Firestore** (the newer Firebase DB) is tested the same way via its REST API and rules;
+open Firestore rules (`allow read, write: if true;`) have the identical effect.
+
+## 37.3 Cloud storage buckets
+Apps often store files in a bucket. Find the bucket name (37.1), then test public access:
+```
+# AWS S3
+curl "https://<bucket>.s3.amazonaws.com/"               # lists files if public
+# Google Cloud Storage
+curl "https://storage.googleapis.com/<bucket>/"
+# Azure Blob
+curl "https://<account>.blob.core.windows.net/<container>?restype=container&comp=list"
+```
+- A file listing or a downloadable object with **no credentials** = **public bucket** =
+  data exposure.
+- Try a benign upload only if authorised; a writable bucket is worse (attackers can plant
+  files on a trusted domain).
+
+## 37.4 Is the Firebase API key a secret?
+Short answer: **no, by design.** The Firebase API key in `google-services.json` is meant
+to be public and only identifies the project — it is **not** the vulnerability by itself.
+The real vulnerability is **open rules** on the database/storage behind it. So don't report
+"API key exposed" as a high finding; report the **open database/bucket** it leads to.
+
+## 37.5 GraphQL and custom APIs
+If the app uses GraphQL (`/graphql`), test:
+- **Introspection** — ask the API to describe its whole schema; if enabled, it reveals
+  every query and field (information disclosure).
+- **Over-fetching / missing authorization** — query objects you shouldn't be able to see.
+
+For any custom API, also check the usual backend misconfigs: `Access-Control-Allow-Origin:
+*` (open CORS), verbose stack-trace errors, directory listing, and exposed admin/debug
+endpoints.
+
+## 37.6 Impact and remediation
+**Impact.** Mass data exposure (often **PII**), data tampering or deletion, and attacker
+files planted on a trusted cloud domain.
+
+**Remediation.** Set **security rules** that require authentication and least privilege
+(`".read"`/`".write"` tied to the signed-in user); make buckets private and serve files
+with signed URLs; disable GraphQL introspection in production; scope CORS to known
+origins; and never rely on "only our app knows this URL" as protection.
+
+**Responsible testing.** Confirm the misconfiguration with **one small, benign request**
+(a `.json` read that returns a little data, or a marker write you then delete). **Do not
+mass-download real user data or alter records** — one proof is enough for the report.
+
+---
+
+# CHAPTER 38 — Methodology checklist
 
 **Recon & setup:** obtain APK (pull/sideload, merge splits) · identify stack (lib/) ·
 MobSF + apkleaks triage.
