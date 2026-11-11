@@ -9,9 +9,13 @@ Structure:
 - **Chapters 1–9: Foundations** — what Android is and how it works, deeply.
 - **Chapters 10–13: The testing process** — environment, getting the app, decompiling,
   static analysis.
-- **Chapters 14–32: The attacks** — each one: *what it is → why it is vulnerable →
+- **Chapters 14–33: The attacks** — each one: *what it is → why it is vulnerable →
   techniques (with commands and examples)*.
-- **Chapter 33: Methodology checklist.**
+- **Chapters 34–36: Hands-on bypass & patching workshop** — hunting hardcoded
+  credentials (OWASP M1), a Frida bypass cookbook (SSL pinning, root, emulator —
+  with ready scripts), and manual patching with Ghidra + rebuild + re-sign for when
+  Frida is blocked.
+- **Chapter 37: Methodology checklist.**
 
 ---
 
@@ -1301,7 +1305,304 @@ Test the API as thoroughly as a web application; this is usually where critical 
 
 ---
 
-# CHAPTER 34 — Methodology checklist
+# CHAPTER 34 — Improper Credential Usage: hunting hardcoded secrets (OWASP M1)
+
+**What it is.** The app ships **secrets it should not** — API keys, passwords, tokens,
+cloud keys — baked inside it, or it **uses credentials badly** (sends them in the URL,
+stores them in plain text, uses one hardcoded admin password for everyone). OWASP calls
+this **M1: Improper Credential Usage**.
+
+**Why it is vulnerable (the golden rule).** The APK is installed on the attacker's own
+device. **Anything shipped inside the app can be read.** A secret inside the app is not
+secret — it is only hidden, and hiding is not protecting. Obfuscation just slows you
+down: the key still has to be used at runtime, so it is always recoverable in the end.
+
+*Real example you meet in the field:* an app sends every request with
+`X-Username: AppPortal` and `X-Password: ...` in the headers. Those are **static
+service-account credentials**. Anyone who reads the traffic — or the app — now has
+working backend credentials, for every user, until someone manually changes them.
+
+**Where secrets hide.**
+- `res/values/strings.xml` and other resource files
+- `BuildConfig` (compiled into smali as `const-string`)
+- `assets/` — config files, `.json`, `.properties`, Firebase `google-services.json`
+- native libraries `lib/*/*.so` (keys compiled into C)
+- source/smali — hardcoded URLs, keys, basic-auth
+- `AndroidManifest.xml` — `meta-data` API keys (e.g. Google Maps)
+
+**Techniques.**
+
+1. Unzip and grep the whole app:
+```
+unzip base.apk -d app_out
+grep -rinE "password|passwd|secret|api[_-]?key|token|bearer|authorization|aws|firebase|private[_-]?key" app_out/
+```
+
+2. Decompile and search in jadx:
+```
+jadx -d jadx_out base.apk
+# then search for: apiKey, secret, password, Bearer, https://
+```
+
+3. Strings inside native libraries:
+```
+strings -n 6 app_out/lib/arm64-v8a/*.so | grep -iE "key|token|secret|http"
+```
+
+4. Automated secret scanners:
+```
+apkleaks -f base.apk          # finds URLs, keys, secrets
+# trufflehog filesystem app_out/      # entropy + known patterns
+# MobSF also flags hardcoded secrets in its report
+```
+
+5. Check how credentials are **used**, not just stored:
+   - in the URL (`?token=...`) → leaks into logs, history, and the `Referer` header
+   - sent over HTTP (cleartext) → Chapter 23
+   - the **same static value for every user** → no real per-user authentication
+
+**Impact.** Direct backend access, account takeover, cloud-account compromise (an
+exposed AWS/Firebase key can read or wipe data), and bypass of paid features.
+
+**Remediation.** Keep **no secrets in the client**. Put them on a server the app talks
+to, and let the server hold the real keys. Use **short-lived, per-user tokens**, never
+static shared credentials. Never send credentials in the URL. Treat any secret that has
+**ever** shipped in an app as **burned** — rotate it.
+
+---
+
+# CHAPTER 35 — Frida bypass cookbook: SSL pinning, root, emulator (ready scripts)
+
+Chapters 24, 25 and 32 explained *why* these defences exist. This chapter gives you the
+**actual scripts** to defeat them, so you can test the app on your own device. Frida
+changes the app's behaviour **in memory at runtime** — nothing on disk is modified, and
+no re-signing is needed.
+
+**Setup (once).** Frida has two parts: **frida-server** on the (rooted) device, and
+**frida-tools** on your computer.
+```
+pip install frida-tools                              # on the computer
+adb push frida-server /data/local/tmp/               # push matching server to device
+adb shell "chmod 755 /data/local/tmp/frida-server"
+adb shell "su -c /data/local/tmp/frida-server &"     # run it as root
+frida-ps -U | head                                   # confirm it connects
+```
+Run any script with: `frida -U -f <package> -l script.js` (spawns the app with the hook
+already in place).
+
+## 35.1 SSL pinning bypass (so you can read the traffic in Burp)
+**Why.** Pinning makes the app trust only one specific certificate, so Burp's certificate
+is rejected and you see nothing. We hook the functions that check the certificate and make
+them accept Burp's.
+
+Easiest — objection:
+```
+objection -g <package> explore
+android sslpinning disable
+```
+
+Manual script (hooks the common pinning points at once):
+```javascript
+Java.perform(function () {
+    // 1) Default TrustManager -> accept everything
+    var X509TM = Java.use('javax.net.ssl.X509TrustManager');
+    var SSLContext = Java.use('javax.net.ssl.SSLContext');
+    var TrustAll = Java.registerClass({
+        name: 'dev.test.TrustAll', implements: [X509TM],
+        methods: {
+            checkClientTrusted: function () {},
+            checkServerTrusted: function () {},
+            getAcceptedIssuers: function () { return []; }
+        }
+    });
+    var init = SSLContext.init.overload(
+        '[Ljavax.net.ssl.KeyManager;', '[Ljavax.net.ssl.TrustManager;', 'java.security.SecureRandom');
+    init.implementation = function (km, tm, sr) { init.call(this, km, [TrustAll.$new()], sr); };
+
+    // 2) OkHttp CertificatePinner -> do nothing
+    try {
+        var CP = Java.use('okhttp3.CertificatePinner');
+        CP.check.overload('java.lang.String', 'java.util.List').implementation = function () { return; };
+    } catch (e) {}
+
+    // 3) Android TrustManagerImpl -> return the chain unverified
+    try {
+        var TMI = Java.use('com.android.org.conscrypt.TrustManagerImpl');
+        TMI.verifyChain.implementation = function (certs) { return certs; };
+    } catch (e) {}
+
+    console.log('[+] SSL pinning hooks installed');
+});
+```
+In practice, prefer the maintained **`frida-multiple-unpinning`** script (Frida CodeShare)
+— it covers many libraries in one go.
+
+**Flutter note.** Flutter does **not** use the Java TrustManager; it pins inside
+**BoringSSL in `libflutter.so`**. Use the **`disable-flutter-tls-verification`** Frida
+script, or hook the native `ssl_verify` (Chapter 25). Also set Burp as a proxy at the
+**OS/VPN level** (e.g. ProxyDroid), because Flutter ignores the Android proxy setting.
+
+## 35.2 Root detection bypass
+**Why.** The app checks for `su`, Magisk, test-keys, etc., and refuses to run. We make
+those checks return "clean."
+```javascript
+Java.perform(function () {
+    // RootBeer library (very common)
+    try {
+        var RB = Java.use('com.scottyab.rootbeer.RootBeer');
+        ['isRooted','isRootedWithoutBusyBoxCheck','checkForSuBinary','detectRootManagementApps',
+         'checkForBinary','checkForDangerousProps','checkForRWPaths','detectTestKeys']
+         .forEach(function (m) { try { RB[m].implementation = function(){ return false; }; } catch(e){} });
+    } catch (e) {}
+    try {
+        var RBN = Java.use('com.scottyab.rootbeer.RootBeerNative');
+        RBN.checkForRoot.implementation = function(){ return 0; };
+    } catch (e) {}
+
+    // generic: hide su/magisk paths from File.exists
+    var File = Java.use('java.io.File');
+    File.exists.implementation = function () {
+        var p = this.getAbsolutePath();
+        if (p && (p.indexOf('su')>=0 || p.indexOf('magisk')>=0 || p.indexOf('busybox')>=0)) return false;
+        return this.exists();
+    };
+    console.log('[+] root checks neutralised');
+});
+```
+If the check is in a **native `.so`**, hook its exports and force the return to 0:
+```javascript
+var m = Process.findModuleByName('libtoolChecker.so');
+m && m.enumerateExports().forEach(function (e) {
+    if (e.name.indexOf('Java_') === 0)
+        Interceptor.attach(e.address, { onLeave: function (r) { r.replace(0); } });
+});
+```
+
+## 35.3 Emulator detection bypass
+**Why.** The app reads `Build.*` and looks for emulator giveaways (`generic`,
+`goldfish`, `ranchu`). We lie and make it look like a real Pixel.
+```javascript
+Java.perform(function () {
+    var B = Java.use('android.os.Build');
+    var real = { FINGERPRINT:'google/walleye/walleye:10/QP1A.190711.020/5844894:user/release-keys',
+        MODEL:'Pixel 2', MANUFACTURER:'Google', BRAND:'google', PRODUCT:'walleye',
+        DEVICE:'walleye', HARDWARE:'walleye', BOARD:'walleye', TAGS:'release-keys' };
+    for (var k in real) { try { B[k].value = real[k]; } catch(e){} }
+    console.log('[+] Build.* spoofed to a real device');
+});
+```
+Best practice: where you can, use a **real rooted phone with Magisk + Zygisk
+DenyList/Shamiko**. Then emulator detection never triggers and root is hidden, so you
+fight far less.
+
+## 35.4 Running several at once
+```
+frida -U -f com.example.app -l antiroot.js -l spoofbuild.js -l unpinning.js
+```
+
+---
+
+# CHAPTER 36 — When Frida fails: patch the app, rebuild, re-sign
+
+**Why you need this.** Some apps **detect Frida** or refuse to run with a debugger
+attached. Or you want a **permanent** patched build that needs no Frida. The answer is to
+**change the app's code on disk**, rebuild it, and re-sign it. There are two places to
+patch: the **Java/smali** code, and the **native `.so`** code.
+
+One-line idea: *find the check → change it so it always returns "safe" → repackage →
+re-sign → install.*
+
+## 36.1 Why you must re-sign (the signature rule)
+Every Android app is **digitally signed** by its developer. Android refuses to install an
+app whose files don't match its signature. The moment you edit **anything** inside the
+APK, that signature breaks. So after editing you must **re-sign with your own key.** Your
+key won't match the developer's — fine for testing — but an app that checks its **own
+signature** at runtime (Chapter 32) will notice; for that you still need Frida.
+
+## 36.2 Patching Java/smali (the easy layer)
+1. Decompile to smali:
+```
+apktool d base.apk -o app_src
+```
+2. Find the check (e.g. `isDeviceRooted()` in `smali*/.../DeviceUtils.smali`) and replace
+   its body so it always returns false:
+```smali
+.method public final isDeviceRooted(Landroid/content/Context;)Z
+    .locals 1
+    const/4 p1, 0x0      # 0 = false
+    return p1
+.end method
+```
+**Why this works.** `const/4 p1, 0x0` puts the value 0 (false) into the result register;
+`return p1` hands it back. The real check never runs.
+3. Rebuild and re-sign (36.4).
+
+## 36.3 Patching a native `.so` with Ghidra (the hard layer)
+When the check is in C (e.g. `libtoolChecker.so`'s `checkForRoot`), you patch the machine
+code directly.
+1. Open the `.so` in **Ghidra** and find the function (e.g. `Java_com_..._checkForRoot`).
+2. Read the decompiled code to see which value means "rooted." Usually the function
+   returns **1 = rooted, 0 = clean** in register `w0`.
+3. Find the instruction that sets the result (e.g. `mov w0, #0x1`) and change it to
+   `mov w0, #0x0`, **or** patch the final return so it always returns 0.
+   - Right-click the instruction → **Patch Instruction** (Ctrl+Shift+G) → type the new
+     instruction. Ghidra shows the new bytes (`mov w0,#0x0` → `00 00 80 52`).
+4. Export the patched library: **File → Export Program → Original File** (writes the
+   `.so` back out with your bytes).
+5. Put the patched `.so` back into the extracted APK folder
+   (`app_src/lib/arm64-v8a/`).
+
+**Why bytes, not source.** A `.so` is already compiled machine code — there is no source
+to recompile. You change the **exact bytes** of the one instruction that decides the
+result, then put the file back.
+
+**Flutter (`libapp.so`) note.** Dart is compiled into `libapp.so`. Use **Blutter** to
+label it, find the root-check function and the branch that decides the result, then
+either patch that branch to a **NOP** (do-nothing, bytes `1F 20 03 D5`) or do it live
+with Frida `Memory.patchCode` (Chapter 25 pattern). Because of ASLR the runtime address =
+`module base + offset`, so a live Frida patch computes the base first.
+
+## 36.4 Rebuild, align, re-sign, install
+After editing smali and/or the `.so`:
+```
+# 1) rebuild the APK from the edited folder
+apktool b app_src -o patched.apk
+
+# 2) align (required by modern Android)
+zipalign -p -f 4 patched.apk patched-aligned.apk
+
+# 3) make a signing key (once)
+keytool -genkey -v -keystore test.keystore -alias test \
+        -keyalg RSA -keysize 2048 -validity 10000 \
+        -storepass password -keypass password -dname "CN=test"
+
+# 4) sign (v2+)
+apksigner sign --ks test.keystore --ks-pass pass:password \
+        --ks-key-alias test patched-aligned.apk
+
+# 5) install
+adb install -r patched-aligned.apk
+```
+Shortcut — **`uber-apk-signer`** does align + sign in one step:
+```
+java -jar uber-apk-signer.jar -a patched.apk
+```
+**Why each step.** `apktool b` turns your edited smali/resources back into an APK ·
+`zipalign` lays the file out the way Android requires · `keytool` makes your own signing
+key (once) · `apksigner` signs with that key so Android will install it · `adb install -r`
+installs it, replacing the old one.
+
+## 36.5 Which layer do I patch?
+- Check is in **Java** (you see it in jadx/smali) → **smali patch** (36.2).
+- Check is in a **helper `.so`** (RootBeer native, custom C) → **Ghidra patch** (36.3).
+- Check is in **Dart/Flutter** (`libapp.so`) → **Blutter + NOP**, or Frida.
+- App checks its **own signature** or notices a patched file → re-signing alone won't
+  pass; use **Frida** instead, because Frida changes behaviour in memory without changing
+  the file on disk.
+
+---
+
+# CHAPTER 37 — Methodology checklist
 
 **Recon & setup:** obtain APK (pull/sideload, merge splits) · identify stack (lib/) ·
 MobSF + apkleaks triage.
