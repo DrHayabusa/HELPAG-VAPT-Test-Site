@@ -21,7 +21,12 @@ and find security bugs — the same bug classes you find in pentesting, but spot
 - **Part 4 — Chapter 15: OWASP Top 10 in the code** — each item taught in depth: the
   vulnerable code walked through line by line, how to hunt it (grep → trace → confirm),
   the false-positive check, and the fix — across TypeScript, Java, and C#.
-- **Part 5 — Chapters 16–17: Methodology & checklist.**
+- **Part 5 — Chapters 16–18: Methodology, checklist & tool setup** — a repeatable review
+  method, a grep cheat-sheet, and installing/running the tools (Semgrep, gitleaks,
+  Dependency-Check, Black Duck) from scratch.
+- **Appendices A–C** — OWASP↔CWE mapping (for writing findings), a **worked-practice set**
+  (10 vulnerable snippets, you find the bug, answers included), and a finding-report template
+  plus glossary.
 
 ---
 
@@ -1215,6 +1220,218 @@ snippet · why exploitable · fixed snippet.
 
 ---
 
+# CHAPTER 18 — Setting up your tools (installation → first scan)
+
+You'll run automated tools alongside manual review. Here's how to install and run each one
+**from zero**, so nothing is new on the day of the assessment. You need a terminal and, ideally,
+**VS Code** to read the code.
+
+**0. Get the code into a readable place.**
+```
+git clone <repo-url> myapp      # or unzip the source the client gave you
+cd myapp
+code .                          # open the folder in VS Code (Ctrl/Cmd+Shift+F = search everything)
+```
+VS Code's search (the magnifying glass) is `grep` with a UI — use it for the hunting loop.
+
+**1. Semgrep (SAST — bugs in the app's own code).** Free, fast, rule-based.
+```
+pip install semgrep             # or:  brew install semgrep   (macOS)
+semgrep --config auto .                         # community rules for the detected languages
+semgrep --config "p/owasp-top-ten" .            # just OWASP-focused rules
+semgrep --config auto --sarif -o semgrep.sarif .# machine-readable report to triage
+```
+Open each finding at its file:line and apply the Chapter 15 confirm step (real vs false positive).
+
+**2. gitleaks / trufflehog (secrets — committed keys & passwords).**
+```
+brew install gitleaks           # or download the binary from the GitHub releases page
+gitleaks detect --source . --report-path gitleaks.json
+pip install trufflehog  ||  docker run -v "$PWD:/x" trufflesecurity/trufflehog filesystem /x
+```
+These find hardcoded secrets (A02) — verify each is a **real** secret, not a dummy/test value.
+
+**3. OWASP Dependency-Check (free SCA — a free stand-in for Black Duck).**
+```
+# download the CLI from the OWASP Dependency-Check project, then:
+dependency-check --scan ./myapp --format HTML --out dc-report
+# open dc-report/dependency-check-report.html
+```
+Lists third-party components with known CVEs — same job as Black Duck, free and less thorough.
+Good when the client doesn't have Black Duck for a given repo.
+
+**4. Black Duck Detect (the client's SCA — full workflow in Chapter 14).**
+You don't really "install" it — the one-liner downloads and runs it, using the client's Hub URL
+and token:
+```
+export BLACKDUCK_URL="https://blackduck.company.com"
+export BLACKDUCK_API_TOKEN="<token-from-client>"
+bash <(curl -s -L https://detect.blackduck.com/detect10.sh) \
+  --blackduck.url="$BLACKDUCK_URL" --blackduck.api.token="$BLACKDUCK_API_TOKEN" \
+  --detect.source.path="./myapp" --detect.project.name="MyApp" \
+  --detect.project.version.name="2026-review"
+```
+Then read and triage the results in the Hub (Chapter 14).
+
+**5. Language-specific quick scanners (optional, handy):**
+```
+npm audit                          # Node/JS dependencies — quick known-CVE check
+dotnet list package --vulnerable   # .NET/C# dependencies
+mvn dependency-check:check         # Java/Maven (OWASP Dependency-Check plugin)
+```
+
+**The order on a real job:** clone → open in VS Code → run **Black Duck (or Dependency-Check)**
++ **Semgrep** + **gitleaks** (they work while you read) → start the **manual** review (auth,
+access control) → then **triage every tool finding**. Never report a raw tool hit you haven't
+opened and confirmed.
+
+---
+
+# APPENDIX A — OWASP Top 10 (2021) ↔ CWE mapping (for writing findings)
+
+Cite the specific **CWE** in each finding — it's more precise than the OWASP category.
+
+| OWASP (2021) | Common CWEs to cite |
+|---|---|
+| A01 Broken Access Control | CWE-284 (Improper Access Control), CWE-639 (IDOR), CWE-862 (Missing Authorization) |
+| A02 Cryptographic Failures | CWE-327 (Weak Crypto), CWE-328 (Weak Hash), CWE-798 (Hardcoded Credentials), CWE-319 (Cleartext Transmission) |
+| A03 Injection | CWE-89 (SQL Injection), CWE-79 (XSS), CWE-78 (OS Command Injection), CWE-77 |
+| A04 Insecure Design | CWE-209 (Info in Error Message), CWE-840 (Business-Logic Error), CWE-307 (No Lockout) |
+| A05 Security Misconfiguration | CWE-16, CWE-942 (Permissive CORS), CWE-756, CWE-614 |
+| A06 Vulnerable & Outdated Components | CWE-1104 (Unmaintained Component), CWE-937 |
+| A07 Identification & Auth Failures | CWE-287 (Improper Authentication), CWE-384 (Session Fixation), CWE-295 (Improper Cert Validation), CWE-347 (Improper Signature Verification — JWT) |
+| A08 Software & Data Integrity Failures | CWE-502 (Insecure Deserialization), CWE-345, CWE-494 |
+| A09 Logging & Monitoring Failures | CWE-778 (Insufficient Logging), CWE-532 (Secrets in Logs) |
+| A10 SSRF | CWE-918 (SSRF) |
+
+The **CWE Top 25** (MITRE's most-dangerous list) is mostly these same CWEs — e.g. CWE-79, CWE-89,
+CWE-78, CWE-287, CWE-502, CWE-918, plus CWE-22 (Path Traversal), CWE-352 (CSRF), CWE-434
+(Unrestricted File Upload), CWE-20 (Improper Input Validation). If you can name the exact CWE in
+a finding, do — it reads as precise and the client can look it up.
+
+---
+
+# APPENDIX B — Worked practice: find the bug (answers at the end)
+
+Read each snippet, decide **which OWASP item + CWE it is and why**, then check the answers. Treat
+every value from a request/param/body/header as attacker-controlled.
+
+**B1 (C#)**
+```csharp
+[HttpGet("report/{id}")]
+public IActionResult GetReport(int id) {
+    var r = _db.Reports.Find(id);
+    return File(r.Bytes, "application/pdf");
+}
+```
+**B2 (Java)**
+```java
+String q = "SELECT * FROM users WHERE email = '" + email + "' AND pass = '" + pass + "'";
+rs = stmt.executeQuery(q);
+```
+**B3 (TypeScript / Node)**
+```typescript
+app.get("/fetch", async (req, res) => {
+  const r = await fetch(req.query.target as string);
+  res.send(await r.text());
+});
+```
+**B4 (C#)**
+```csharp
+var token = Request.Headers["Authorization"];
+var jwt = new JwtSecurityToken(token);            // read the claims
+if (jwt.Claims.First(c => c.Type == "role").Value == "admin") { /* allow */ }
+```
+**B5 (Java / Spring)**
+```java
+@PostMapping("/avatar")
+public void upload(@RequestParam String filename, @RequestParam byte[] data) throws IOException {
+    Files.write(Paths.get("/var/www/uploads/" + filename), data);
+}
+```
+**B6 (TypeScript / React)**
+```tsx
+function Comment({ text }: { text: string }) {
+  return <div dangerouslySetInnerHTML={{ __html: text }} />;
+}
+```
+**B7 (C#)**
+```csharp
+var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(password)));
+_db.Save(new User { Email = email, PasswordHash = hash });
+```
+**B8 (Java)**
+```java
+String cmd = "convert " + request.getParameter("file") + " out.png";
+Runtime.getRuntime().exec(cmd);
+```
+**B9 (Node / config)**
+```javascript
+app.use(cors({ origin: "*", credentials: true }));
+```
+**B10 (Java)**
+```java
+ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
+Session s = (Session) ois.readObject();
+```
+
+**Answers**
+- **B1 — Broken Access Control / IDOR (A01, CWE-639).** `id` comes from the URL and it never
+  checks the report belongs to the caller. Fix: verify ownership before returning.
+- **B2 — SQL Injection (A03, CWE-89).** Email and password are glued into the query. Fix:
+  parameterized query. (Bonus: passwords compared in plaintext — also A02.)
+- **B3 — SSRF (A10, CWE-918).** The server fetches a user-supplied URL. Fix: allow-list hosts,
+  block internal ranges.
+- **B4 — Authentication failure (A07, CWE-347).** `new JwtSecurityToken(token)` only **reads**
+  the token — it never **verifies the signature** — so the `admin` role is forgeable. Fix:
+  validate signature + lifetime.
+- **B5 — Path Traversal + Unrestricted Upload (A01/A03, CWE-22 / CWE-434).** `filename` is
+  attacker-controlled; `../../` escapes the uploads folder. Fix: validate the name, store under a
+  generated name.
+- **B6 — XSS (A03, CWE-79).** `dangerouslySetInnerHTML` writes untrusted `text` as raw HTML. Fix:
+  render as text (`{text}`) or sanitize with DOMPurify.
+- **B7 — Cryptographic Failure (A02, CWE-328).** SHA-1 (fast, unsalted) for passwords. Fix:
+  bcrypt/argon2.
+- **B8 — OS Command Injection (A03, CWE-78).** `file` is glued into a shell command. Fix: pass
+  args as a list via ProcessBuilder, no shell.
+- **B9 — Security Misconfiguration (A05, CWE-942).** `origin:"*"` **with** `credentials:true` is
+  especially dangerous (browsers forbid it) — any site, with cookies. Fix: list exact origins.
+- **B10 — Insecure Deserialization (A08, CWE-502).** `readObject()` on network bytes can run
+  code. Fix: don't deserialize untrusted data; use a safe format.
+
+If you can name the OWASP category **and** the CWE for each, you're ready to triage real findings.
+
+---
+
+# APPENDIX C — Finding report template + glossary
+
+**Write every finding like this:**
+```
+Title:        <short, specific>   e.g. "SQL Injection in /api/accounts (id parameter)"
+Severity:     Critical / High / Medium / Low   (+ CVSS score if required)
+OWASP / CWE:  A03 Injection / CWE-89
+Location:     src/controllers/AccountController.cs : 42
+Description:  what the code does and why it's exploitable (1-3 sentences)
+Evidence:     the vulnerable code snippet (file:line)
+Impact:       what an attacker achieves (read other users' data, RCE, etc.)
+Remediation:  the fix, with a corrected code snippet
+```
+
+**Mini-glossary (every term, one line):**
+- **Source** — where untrusted input enters (request param/body/header).
+- **Sink** — a dangerous operation (query, command, HTML output, file path, URL fetch).
+- **SAST** — scans source code for bug patterns (Semgrep). **SCA** — scans third-party libraries
+  for known CVEs (Black Duck). **DAST** — tests the running app (Burp/ZAP).
+- **CVE** — one specific known vulnerability id (e.g. CVE-2021-44228). **CWE** — a weakness
+  *type* (e.g. CWE-89). **BDSA** — Black Duck's own advisory id (maps to a CVE).
+- **BOM** — Bill of Materials: the full list of a project's components.
+- **Parameterized query / prepared statement** — sends input separately from the SQL, preventing
+  SQLi. **ORM** — library that maps objects to database rows (Hibernate, Entity Framework).
+- **Transitive dependency** — a library pulled in by another library.
+- **IV / ECB** — crypto settings that are unsafe when fixed/weak.
+
+---
+
 ## References
 - OWASP Top 10 — https://owasp.org/Top10/
 - OWASP Code Review Guide — https://owasp.org/www-project-code-review-guide/
@@ -1223,3 +1440,6 @@ snippet · why exploitable · fixed snippet.
 - Black Duck (SCA) — https://www.blackduck.com/
 - OWASP Dependency-Check (free SCA) — https://owasp.org/www-project-dependency-check/
 - gitleaks — https://github.com/gitleaks/gitleaks · trufflehog — https://github.com/trufflesecurity/trufflehog
+- CWE Top 25 — https://cwe.mitre.org/top25/ · CWE list — https://cwe.mitre.org/
+- OWASP ASVS (verification standard) — https://owasp.org/www-project-application-security-verification-standard/
+- Practice code: OWASP WebGoat, OWASP Juice Shop (source), DVWA, OWASP Vulnerable Web Applications Directory
