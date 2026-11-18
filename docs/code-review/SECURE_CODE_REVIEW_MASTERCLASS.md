@@ -15,11 +15,13 @@ and find security bugs — the same bug classes you find in pentesting, but spot
   codebases, functions, source vs compiled code.
 - **Part 2 — Chapters 6–9: The languages & frameworks you'll review** — JavaScript &
   TypeScript, Java, C#/.NET/ASP.NET, and the frameworks (Node.js, React, Angular, Next.js).
-- **Part 3 — Chapters 10–13: Code review itself** — what it is, manual technique
-  (sources & sinks), automated tools (SAST/SCA/DAST), and **what Black Duck is**.
-- **Part 4 — Chapter 14: OWASP Top 10 in the code** — for each item: what vulnerable code
-  looks like and what to search for, across TypeScript, Java, and C#.
-- **Part 5 — Chapters 15–16: Methodology & checklist.**
+- **Part 3 — Chapters 10–14: Code review itself** — what it is, manual technique
+  (sources & sinks), automated tools (SAST/SCA/DAST), **what Black Duck is**, and
+  **using Black Duck on a real assignment** (step by step).
+- **Part 4 — Chapter 15: OWASP Top 10 in the code** — each item taught in depth: the
+  vulnerable code walked through line by line, how to hunt it (grep → trace → confirm),
+  the false-positive check, and the fix — across TypeScript, Java, and C#.
+- **Part 5 — Chapters 16–17: Methodology & checklist.**
 
 ---
 
@@ -449,7 +451,7 @@ findings. A good review is **tool-assisted, human-judged.**
 
 **What "secure" findings look like.** The same OWASP bug classes you know from pentesting —
 injection, broken access control, XSS, weak crypto, exposed secrets, vulnerable dependencies —
-but spotted as **code patterns** (Chapter 14).
+but spotted as **code patterns** (Chapter 15).
 
 ---
 
@@ -481,7 +483,7 @@ SOURCE (user input)  →  ...passes through functions...  →  SINK (dangerous a
    - Java/Spring: `@RequestParam`, `@PathVariable`, `@RequestBody`, `@GetMapping`
    - C#/ASP.NET: `[HttpGet]`, `[HttpPost]`, `Request.Query`, `Request.Form`, parameters of
      controller methods
-2. **Find the dangerous sinks.** Grep for them (Chapter 14 lists them per language): query
+2. **Find the dangerous sinks.** Grep for them (Chapter 15 lists them per language): query
    builders, `exec`/`eval`, HTML output, file paths, URL fetchers, deserializers.
 3. **Connect them.** For each sink, trace **backwards**: where does its input come from? If it
    traces back to a source **without proper safety in between**, it's a finding.
@@ -492,7 +494,7 @@ SOURCE (user input)  →  ...passes through functions...  →  SINK (dangerous a
 
 **Also review (not everything is a data flow):**
 - **Authentication** — how users log in; are passwords hashed (bcrypt/argon2, not MD5); are
-  sessions/tokens validated (JWT signature checked, Chapter 14 A07).
+  sessions/tokens validated (JWT signature checked, Chapter 15 A07).
 - **Authorization / access control** — does every sensitive action check **who** is asking
   and **whether they're allowed** (the missing-`if` bug)? This is the #1 OWASP item and tools
   are bad at it, so it's **mostly manual**.
@@ -600,157 +602,375 @@ team's own code.*
 
 ---
 
+# CHAPTER 14 — Black Duck on a real assignment (step by step)
+
+Chapter 13 explained *what* Black Duck is (an SCA tool that finds known vulnerabilities in
+third-party libraries). This chapter is *how you actually use it* on a real job.
+
+**The two pieces of Black Duck.**
+- **Black Duck Hub** — the **server / website** where results live. You log in here to read
+  scan results. The client gives you a URL like `https://blackduck.company.com` and an **API
+  token** (a long secret string that logs the scanner in instead of a username/password).
+- **Black Duck Detect** — the **command-line scanner** you run against the code. It inspects
+  the project, works out every third-party component, and uploads the result to the Hub. (It
+  used to be called "Synopsys Detect" — same tool.)
+
+**Step 0 — What you need from the client.** Confirm you have: (1) the **source code** (the
+repo, *including* the dependency files — `package.json` + `package-lock.json`, `pom.xml`,
+`*.csproj`), (2) the **Hub URL**, (3) an **API token**, and (4) written permission/scope to
+scan. Ideally also the ability to **build** the project, because Detect is most accurate when
+it can resolve dependencies the way a real build does.
+
+**Step 1 — Run Detect against the codebase.** One command downloads and runs it. Representative
+example (the client's real URL and token go in the two variables; the exact script URL/version
+comes from the client's Black Duck docs):
+```
+export BLACKDUCK_URL="https://blackduck.company.com"
+export BLACKDUCK_API_TOKEN="<token-from-client>"
+
+bash <(curl -s -L https://detect.blackduck.com/detect10.sh) \
+  --blackduck.url="$BLACKDUCK_URL" \
+  --blackduck.api.token="$BLACKDUCK_API_TOKEN" \
+  --detect.source.path="./myapp" \
+  --detect.project.name="MyApp" \
+  --detect.project.version.name="2026-review"
+```
+What each part means:
+- the `curl … detect10.sh` line downloads and runs the Detect scanner,
+- `--detect.source.path` points it at the code folder,
+- `--detect.project.name` / `version.name` label this scan in the Hub so you can find it later.
+
+**What Detect does during the scan (two methods):**
+1. **Dependency / package-manager scan (accurate).** It reads the manifest + lock files
+   (`package-lock.json`, `pom.xml`, `*.csproj`) and asks the package manager for the exact
+   component **versions**, including **transitive** ones (libraries pulled in by your
+   libraries). This is the reliable match.
+2. **Signature scan (broader, noisier).** It also **hashes files** and matches them against
+   Black Duck's database of known open-source files, to catch components copied in without a
+   package manager. Useful, but produces more false matches — you verify these by hand.
+
+The result is a **BOM** (**Bill of Materials**) — the full list of every open-source component
+and version in the app.
+
+**Step 2 — Read the results in the Hub.** Open the project/version you named. You'll see:
+- **Components** — every library + version (direct and transitive).
+- **Security risk** — each component's known vulnerabilities, shown with a **BDSA** id (Black
+  Duck's own advisory id, which maps to a public **CVE**), a **severity** (Critical/High/…), a
+  **CVSS score** (a 0–10 number), and a **"solution"** (the fixed version to upgrade to).
+- **License risk** — components with risky licenses (e.g. GPL) — a legal concern you report
+  separately.
+- **Operational risk** — very old / unmaintained components.
+
+**Step 3 — Triage (the real skill — never dump the raw list).** For each **High/Critical**:
+1. **Direct or transitive?** Direct (your team chose it) is easy to fix; transitive means it
+   came via another library — note the chain so they know what to upgrade.
+2. **Is there a fixed version?** The Hub shows it → "Upgrade X 1.2 → 1.5."
+3. **Is the vulnerable part actually used/reachable?** Black Duck flags a component's CVE
+   whether or not your app calls the vulnerable function. If time allows, check in the code
+   whether the risky feature is used — it strengthens the finding and cuts false alarms.
+4. **Set status in the Hub:** mark each as Needs Review, Remediated, or **Ignored / False
+   Positive** with a note (e.g. a dev-only/test dependency that never ships to production).
+
+**Step 4 — Write the findings.** Group by severity. Each one:
+> *Component `log4j-core 2.14.1` has **CVE-2021-44228 (Log4Shell)** — Critical, CVSS 10.0,
+> remote code execution. Fixed in **2.17.1**. Pulled in transitively via
+> `spring-boot-starter-log4j2`. Recommendation: upgrade to 2.17.1+.*
+
+**Worked example (Log4Shell).** You give Detect the repo. It reads `pom.xml`, resolves the full
+dependency tree, and sees `log4j-core 2.14.1` — even though your team never wrote
+`import log4j` directly, it came in **transitively**. The Hub flags CVE-2021-44228, Critical,
+fix 2.17.1. You confirm the app logs user-controlled data, mark it Critical, and write the
+upgrade recommendation. That's the whole loop.
+
+**Remember Black Duck's boundary.** It covers **only third-party components (OWASP A06)**. It
+will **not** find the SQL injection, broken access control, or XSS your team wrote — those are
+the next chapter (manual review + SAST). On a real assignment you run **both**: Black Duck for
+the dependencies, and the OWASP code review below for the app's own code.
+
+---
+
 # PART 4 — OWASP TOP 10 IN THE CODE
 
-# CHAPTER 14 — OWASP Top 10 (2021), seen in source code
+# CHAPTER 15 — OWASP Top 10 (2021) in source code: reading and finding each one
 
-For each of the OWASP Top 10, here is **what the vulnerable code looks like**, **what makes it
-safe**, and **what to grep for** — across TypeScript/JS (Node), Java, and C#. This is the heart
-of code review: recognizing these patterns.
+This is the core of code review. **Yes — code review uses the same OWASP Top 10 you know from
+pentesting**; you just find each one by **reading the code** instead of attacking a running app.
 
-## A01 — Broken Access Control (the #1 risk; mostly manual)
-**What it is.** The code performs a sensitive action **without checking whether the user is
-allowed**. Tools miss this; you find it by reading.
+For every item below you get the same four things, so you can actually *do* it:
+1. **What it is** — plain definition, every term explained.
+2. **What the vulnerable code looks like** — a real snippet, walked through line by line.
+3. **How to hunt it** — the exact search, then how to **trace** and **confirm** it's real.
+4. **The fix** — the corrected code, so you can write the remediation.
 
-Vulnerable (Node): returns any user's data, no check that it's *your* data:
+**The universal hunting loop (use it for every item):**
+```
+1. GREP for the sink   → find the dangerous operation (a query, a command, HTML output, a fetch)
+2. OPEN the file       → read the few lines around it
+3. TRACE backwards     → where does its input come from? follow it to a "source" (= user input)
+4. CHECK the barrier   → is there a safe step in between? (parameterized query, output encoding,
+                         an access-control "if", input validation)   Present = safe. Absent = BUG.
+5. VERDICT             → real finding (record file:line) OR false positive (a correct barrier exists)
+```
+Keep this loop in your head through all ten. "Source" and "sink" are from Chapter 11.
+
+## A01 — Broken Access Control (the #1 risk — and mostly invisible to tools)
+**What it is.** **Access control** = the rules deciding **who is allowed to do what**. Broken
+access control = the code does a sensitive action **without properly checking the logged-in
+user is allowed** to. Two flavors you'll meet most:
+- **IDOR** (Insecure Direct Object Reference) — the code fetches a record by an **id** from the
+  request without checking the record **belongs to** that user (you exploited exactly this on
+  Ajman: change the reference number → get someone else's record).
+- **Missing role check** — an admin-only action that never checks "is this user an admin?"
+
+**Vulnerable code (Node), walked through:**
 ```javascript
-app.get("/account/:id", (req, res) => {
-    const acc = db.getAccount(req.params.id)   // no check that req.params.id belongs to the caller
-    res.json(acc)                               // IDOR — the bug you exploited on Ajman
+app.get("/account/:id", (req, res) => {          // endpoint: /account/<id>
+    const acc = db.getAccount(req.params.id)      // (1) takes id straight from the URL
+    res.json(acc)                                 // (2) returns the account — NO ownership check
 })
 ```
-Safe: it checks ownership/role before acting:
+- Line (1): `req.params.id` is the **source** — the user fully controls it (they can put any
+  number).
+- Line (2): it returns whatever account matches and **never checks** the account belongs to the
+  caller. So user 5 can read `/account/6`. That is IDOR.
+
+**How to hunt it:**
+1. **Grep for lookups by id / entry points:** `req.params`, `req.query.id`, `findById`,
+   `getById`, `@PathVariable`, `[FromRoute]`.
+2. **Open each and ask the key question:** *"After it gets the id, is there an `if` that checks
+   the current user is allowed?"* — an ownership check (`acc.ownerId === req.user.id`) or a role
+   check (`if (req.user.isAdmin)`, `@PreAuthorize`, `[Authorize]`).
+3. **The bug is the ABSENCE of that check.** Unlike injection, you hunt for something
+   **missing** — that's why tools miss it and you must read.
+4. **Confirm:** trace whether the logged-in identity (`req.user`) is ever compared to the
+   object's owner/role. If not → real finding.
+
+**False-positive check:** the guard may live in **middleware** (a function that runs before the
+handler) or an **annotation/attribute** (`[Authorize(Roles="Admin")]`, `@PreAuthorize`). Before
+reporting, confirm no such guard wraps the route. If a correct one exists, it's safe.
+
+**Fix:**
 ```javascript
-if (acc.ownerId !== req.user.id) return res.status(403).send("forbidden")
+const acc = db.getAccount(req.params.id)
+if (acc.ownerId !== req.user.id) return res.status(403).send("forbidden")   // ownership check
+res.json(acc)
 ```
-**What to look for:** endpoints that take an **id** and fetch/modify by it with **no ownership
-or role check**; admin functions with no role check; access checks done only in the frontend.
-**Grep:** `req.params`, `req.query.id`, `findById`, `@PathVariable`, and then ask "is there an
-`if` checking who's allowed?" Look for the **absence** of checks like `isAdmin`, `req.user`,
-`@PreAuthorize`, `[Authorize]`.
 
-## A02 — Cryptographic Failures (weak or misused crypto; exposed secrets)
-**What it is.** Weak algorithms, hardcoded keys, static IVs, weak randomness, or sensitive
-data not encrypted.
-Vulnerable (Java): weak hash for passwords:
+## A02 — Cryptographic Failures (weak crypto and exposed secrets)
+**What it is.** "Cryptography" = protecting data with math. A cryptographic failure = using it
+**wrongly or weakly**. Terms you need:
+- **Hash** — a one-way fingerprint of data (used for passwords). A **strong** password hash is
+  deliberately **slow** (bcrypt, argon2, PBKDF2). **MD5/SHA1 are fast and broken** for
+  passwords.
+- **Encryption** — reversible scrambling with a **key**. An **IV** (initialization vector) is a
+  value that must be **random each time**; a fixed IV leaks patterns. **ECB** is a weak
+  encryption mode that also leaks patterns.
+
+**Vulnerable (Java), walked through:**
 ```java
-String hash = MessageDigest.getInstance("MD5").digest(password);  // MD5 — broken
+String hash = toHex(MessageDigest.getInstance("MD5").digest(password.getBytes()));
 ```
-Safe: a strong, slow password hash (bcrypt/argon2/PBKDF2).
-**Grep (all languages):** `MD5`, `SHA1`, `DES`, `ECB`, `Random()` (for security use),
-`IvParameterSpec(new byte[` (static IV), and hardcoded keys: `password =`, `apiKey =`,
-`secret =`, `BEGIN PRIVATE KEY`. Check config files (`.env`, `appsettings.json`,
-`application.properties`) for secrets too.
+- `getInstance("MD5")` selects **MD5** — fast and broken. Passwords hashed with MD5 can be
+  cracked in bulk. That's a finding on its own.
 
-## A03 — Injection (SQL, command, and XSS)
-**What it is.** Untrusted input is glued into a command/query/page instead of being passed
-safely. The classic source→sink bug.
+**How to hunt it:**
+1. **Grep for weak algorithms:** `MD5`, `SHA1`, `SHA-1`, `DES`, `RC4`, `ECB`, `Math.random`/
+   `new Random()` used for tokens, `IvParameterSpec(new byte[` (a fixed all-zero IV).
+2. **Grep for hardcoded secrets:** `password =`, `apiKey =`, `secret =`, `private key`,
+   `BEGIN RSA PRIVATE KEY`, `connectionString`, and scan **config files** (`.env`,
+   `appsettings.json`, `application.properties`, `web.config`).
+3. **Confirm the context:** MD5 protecting a **password/token/signature** = finding.
 
-**SQL injection** — vulnerable (string-building):
+**False-positive check:** weak hashes are sometimes used for harmless things (cache keys,
+ETags, file-change checks). Only flag when it protects something security-relevant.
+
+**Fix:**
+```java
+String hash = BCrypt.hashpw(password, BCrypt.gensalt());   // bcrypt — slow, salted
+```
+and move secrets out of code into environment variables / a secrets manager.
+
+## A03 — Injection: SQL, Command, and XSS (the classic source → sink bug)
+**What it is.** **Injection** = untrusted input is **glued into** a query/command/page as if it
+were trusted code, so the attacker's input changes the meaning. This is the purest
+**source → sink** bug (Chapter 11): user input (**source**) reaches a dangerous operation
+(**sink**) with no safe step between.
+
+### SQL injection
+**Vulnerable (C#), walked through:**
 ```csharp
-var sql = "SELECT * FROM users WHERE name = '" + name + "'";   // C# — SQLi
-db.Query(sql);
+var name = Request.Query["name"];                               // (1) source: user input
+var sql  = "SELECT * FROM users WHERE name = '" + name + "'";   // (2) glued into the query
+db.Query(sql);                                                  // (3) sink: runs the query
 ```
-```java
-stmt.executeQuery("SELECT * FROM users WHERE id = " + id);     // Java — SQLi
-```
-Safe = **parameterized query / prepared statement** (the input is sent separately, never glued
-in):
-```java
-PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE id = ?");
-ps.setInt(1, id);                                              // safe
-```
-**Grep for SQLi:** string concatenation into queries — `"SELECT`, `"INSERT`, `"UPDATE`,
-`executeQuery(`, `createQuery(`, `.Query(`, `rawQuery`, `+ userInput`. The red flag is a query
-with `+` (gluing) and user input; the safe sign is `?`/`@param` placeholders with
-`prepareStatement`/parameterized APIs.
+- (1) `Request.Query["name"]` is user-controlled.
+- (2) `+ name +` **concatenates** (glues) it into SQL text. If `name` is `' OR '1'='1`, the
+  logic changes — injection.
+- (3) the database runs the attacker-shaped query.
 
-**Command injection** — input passed to the OS shell:
-```javascript
-exec("ping " + req.query.host)       // Node — command injection
-```
-**Grep:** `exec(`, `execSync(`, `child_process`, `Runtime.getRuntime().exec` (Java),
-`Process.Start`/`ProcessStartInfo` (C#), `os.system`.
+**How to hunt SQLi:**
+1. **Grep for query sinks:** `"SELECT`, `"INSERT`, `"UPDATE`, `"DELETE`, `executeQuery(`,
+   `createQuery(`, `.Query(`, `rawQuery(`, `FromSqlRaw(`, `createStatement(`.
+2. **Open each and look for GLUING:** a `+`, or string interpolation (`$"...{name}..."` in C#,
+   `` `...${name}...` `` in JS, `String.format`/concatenation in Java) that drops a variable into
+   the query string.
+3. **Trace the variable back:** does it come from a **source** (request param/body)? Glued +
+   user-sourced → SQLi.
+4. **Confirm the barrier is missing:** the safe sign is **placeholders** — `?` or named params
+   (`@name`, `:id`) with `prepareStatement`/parameterized APIs, or an **ORM** used normally.
 
-**XSS (injection into the page)** — untrusted input written as HTML:
-```javascript
-element.innerHTML = req.query.name            // DOM XSS
-// React:
-<div dangerouslySetInnerHTML={{ __html: userInput }} />   // React XSS sink
+**False-positive check:** parameterized queries and ORMs (Entity Framework, Hibernate,
+Sequelize) are safe — **unless** code builds raw SQL strings inside them
+(`createQuery("... " + input)`, `.rawQuery`, `FromSqlRaw($"...{input}")`).
+
+**Fix (parameterized):**
+```csharp
+db.Query("SELECT * FROM users WHERE name = @name", new { name });   // input sent separately
 ```
-**Grep:** `innerHTML`, `dangerouslySetInnerHTML`, `bypassSecurityTrust` (Angular),
-`document.write`, `v-html` (Vue), and server templates that disable auto-escaping (`| raw`,
-`@Html.Raw` in C#/Razor, `<%= %>` unescaped).
+
+### Command injection
+**What it is.** User input reaches a call that runs an **operating-system command**, so the
+attacker can run their own commands.
+```javascript
+exec("ping -c 1 " + req.query.host)        // host = "x; rm -rf /"  → runs rm
+```
+**Hunt:** grep `exec(`, `execSync(`, `spawn(` with a shell, `child_process` (Node),
+`Runtime.getRuntime().exec`, `ProcessBuilder` (Java), `Process.Start`, `ProcessStartInfo`
+(C#), `os.system`. Trace the argument to a source. **Safe sign:** a fixed command with
+arguments passed as an **array** (no shell string-building), or no user input in the command.
+
+### XSS (injection into the web page)
+**What it is.** Untrusted input is written into the page as **HTML/markup**, so the attacker's
+`<script>` runs in the victim's browser. (The XSS you test in pentests — here you spot the
+**sink** in code.)
+```javascript
+element.innerHTML = location.hash                         // DOM XSS: writes raw HTML
+<div dangerouslySetInnerHTML={{ __html: userInput }} />   // React's raw-HTML escape hatch
+```
+**Hunt:** grep `innerHTML`, `outerHTML`, `document.write`, `dangerouslySetInnerHTML` (React),
+`bypassSecurityTrustHtml` (Angular), `v-html` (Vue), `@Html.Raw` (C#/Razor), `| safe`/`| raw`
+(templates), unescaped `<%= %>`. **Safe sign:** frameworks **auto-escape** normal output
+(`{{ value }}` in Angular/Vue, `{value}` in React) — the bug is where that escaping is
+**bypassed** by a sink above, and the value traces to user input.
+**Fix:** don't build HTML from input; let the framework escape it, or sanitize with DOMPurify
+if raw HTML is truly required.
 
 ## A04 — Insecure Design
-**What it is.** A flaw in the **design/logic**, not a single bad line — e.g. no rate limiting
-on login (allows brute force), a password-reset flow that leaks whether an email exists, a
-"confirm order" step that can be skipped. Found by **reasoning about the flow**, not grep.
-Look at multi-step flows (auth, payment, reset) and ask "what step can be skipped or abused?"
+**What it is.** A weakness in the **logic/flow** of a feature, not a single bad line — the
+design itself is unsafe. Examples: **no rate limiting** on login (brute force works), a
+**password-reset** that reveals whether an email exists (user enumeration), a checkout that
+lets you **skip the payment step**, a coupon that can be applied unlimited times.
+**How to hunt it:** you can't grep a design flaw — you **reason about multi-step flows**. Find
+the sensitive flows (login, registration, password reset, payment, money transfer) and for each
+ask: *"What step can be skipped, repeated, or done out of order? What control is missing — a
+limit, a check, a confirmation?"* Concrete checks: is there a **lockout/throttle** on login?
+Does password reset behave **identically** whether or not the email exists? Can a request be
+**replayed**?
+**Fix:** add the missing control to the design — rate limits, generic responses, server-side
+state that enforces step order.
 
 ## A05 — Security Misconfiguration
-**What it is.** Insecure settings: debug mode on in production, verbose errors returned to
-users, permissive **CORS** (`Access-Control-Allow-Origin: *`), default credentials, missing
-security headers, directory listing.
-**Grep:** `AllowAnyOrigin`, `Access-Control-Allow-Origin`, `"*"`, `debug = true`,
-`DEBUG=True`, `app.UseDeveloperExceptionPage`, `printStackTrace` sent to responses,
-`spring.profiles.active=dev`. Check config files closely.
+**What it is.** The app is configured insecurely: **debug mode** on in production (leaks stack
+traces), verbose errors sent to users, **permissive CORS**, default credentials, missing
+security headers, directory listing enabled. (**CORS** = the browser rule for which *other*
+sites may call this API; `Access-Control-Allow-Origin: *` means **everyone**.)
+**Vulnerable (C#):**
+```csharp
+app.UseCors(p => p.AllowAnyOrigin().AllowAnyHeader());   // any website can call this API
+app.UseDeveloperExceptionPage();                         // shows stack traces to users
+```
+**How to hunt it:** grep `AllowAnyOrigin`, `Access-Control-Allow-Origin`, `"*"`,
+`UseDeveloperExceptionPage`, `debug = true`, `DEBUG=True`, `printStackTrace` sent in responses,
+`spring.profiles.active=dev`, `ASPNETCORE_ENVIRONMENT=Development`. Read **config files**
+closely (`appsettings.json`, `web.config`, `application.properties`, `.env`).
+**False-positive check:** confirm the setting applies to **production**, not only a local-dev
+profile (the main false positive here).
+**Fix:** restrict CORS to known origins, disable debug/verbose errors in production, add
+security headers, remove defaults.
 
 ## A06 — Vulnerable & Outdated Components  ← **this is Black Duck's job**
-**What it is.** The app uses **third-party libraries with known CVEs** (like Log4Shell).
-**How you find it:** this is the one you cover with **SCA / Black Duck** (Chapter 13), not by
-reading code. Check the dependency files (`package.json`, `pom.xml`, `*.csproj`) and run the
-scanner; report outdated/vulnerable components with their fixed versions.
+**What it is.** The app uses **third-party libraries with known vulnerabilities (CVEs)** — like
+Log4Shell. The bug isn't in your team's code; it's in a library they pulled in (often
+**transitively** — a library of a library).
+**How you find it:** this is the one you cover with **SCA / Black Duck** (Chapters 13–14), not
+by reading source. Check the dependency files (`package.json` + lockfile, `pom.xml`, `*.csproj`),
+run the scanner, and report each outdated/vulnerable component with its **fixed version**.
+Manual backup if no scanner: list the dependencies and check each version against public CVE
+databases (NVD) or GitHub Advisories.
+**Fix:** upgrade to the patched version; remove unused dependencies.
 
 ## A07 — Identification & Authentication Failures
-**What it is.** Weak login/session handling: weak password rules, no lockout/rate limit,
-predictable or unsigned tokens, **JWT signature not verified**, sessions that don't expire,
-credentials in the URL.
-Vulnerable (JWT not verified):
+**What it is.** Weaknesses in **how users prove who they are** (login) and how sessions/tokens
+are handled: weak password rules, **no lockout/rate limit** (brute force), predictable or
+**unverified tokens**, sessions that never expire, credentials in the URL. A key code bug:
+**not verifying a JWT's signature.** (A **JWT** = a signed token the server gives a logged-in
+user; the signature proves the server made it. If you only **decode** it without **verifying**,
+anyone can forge one.)
+**Vulnerable (Node), walked through:**
 ```javascript
-const data = jwt.decode(token)       // decode does NOT verify the signature — forgeable!
+const data = jwt.decode(token)      // decode ONLY reads the token — it does NOT check the signature
+if (data.role === "admin") { ... }  // trusting a forgeable value
 ```
-Safe:
-```javascript
-const data = jwt.verify(token, secret)   // verify checks the signature
-```
-**Grep:** `jwt.decode(` (vs `jwt.verify(`), `alg: "none"`, password comparison with `==`
-instead of a constant-time check, missing lockout logic, `MD5`/`SHA1` for passwords, session
-timeout settings.
+- `jwt.decode` reads the token's contents **without checking the signature**, so an attacker
+  can craft a token saying `role: admin`. The correct call is `jwt.verify`.
+**How to hunt it:** grep `jwt.decode(` (the bug) vs `jwt.verify(` (the fix), `alg: "none"`
+(disables signature checks), `verify: false`, password comparison with `==`/`.equals` (should
+be constant-time), missing lockout/throttle on login, `MD5`/`SHA1` for passwords (ties to A02),
+long or absent session timeouts. **Confirm:** trace whether every protected route actually
+**verifies** the token and checks expiry.
+**Fix:** `jwt.verify(token, secret)`; enforce strong passwords, lockout, and short-lived tokens.
 
 ## A08 — Software & Data Integrity Failures (incl. insecure deserialization)
-**What it is.** Trusting data/code without checking integrity — the big one in code is
-**insecure deserialization** (turning attacker-controlled bytes back into live objects can run
-code), and pulling code/updates without verifying them.
-**Grep:** `ObjectInputStream`/`readObject` (Java), `BinaryFormatter`/`JavaScriptSerializer`/
-`TypeNameHandling` (C#), `pickle`/`yaml.load` (Python), `eval(`, `deserialize(` on untrusted
-input.
+**What it is.** Trusting data or code **without checking it hasn't been tampered with**. The
+headline code bug is **insecure deserialization**: "serialization" turns an object into bytes to
+store/send; "deserialization" turns bytes back into a live object. If those bytes are
+**attacker-controlled**, deserializing them can **create dangerous objects and even run code**.
+Also includes pulling updates/libraries without verifying their signature.
+**Vulnerable (Java):**
+```java
+ObjectInputStream in = new ObjectInputStream(request.getInputStream());
+Object obj = in.readObject();      // deserializing attacker bytes → possible remote code execution
+```
+**How to hunt it:** grep `readObject`, `ObjectInputStream` (Java), `BinaryFormatter`,
+`JavaScriptSerializer`, `TypeNameHandling` = Auto/All (C#/JSON.NET), `yaml.load` (unsafe),
+`pickle.loads` (Python), `eval(`, and any `deserialize(` fed from a request. **Confirm** the
+input is untrusted (from the network/user). **Fix:** avoid deserializing untrusted data; use
+safe formats (plain JSON into known types); verify signatures on updates.
 
 ## A09 — Security Logging & Monitoring Failures
-**What it is.** Two sides: **too little** logging (no record of security events, so attacks go
-unseen) and **too much / wrong** logging (writing **passwords, tokens, card numbers** into
-logs — a leak). Also log injection.
-**Grep:** `log.info(... password`, `console.log(... token`, logging of request bodies that may
-contain secrets; and conversely, sensitive actions (login, money transfer, admin) with **no**
-logging.
+**What it is.** Two opposite problems: (a) **too little** — sensitive actions (login, money
+transfer, admin changes) aren't logged, so attacks go unnoticed; and (b) **too much / wrong** —
+logging **secrets** (passwords, tokens, card numbers), which leaks them into log files.
+**Vulnerable:**
+```javascript
+console.log("login attempt", { user, password })   // writes the PASSWORD into the logs
+```
+**How to hunt it:** grep log calls near secrets — `log.info`, `logger.`, `console.log`,
+`Console.WriteLine` — on the same line as `password`, `token`, `secret`, `card`, `cvv`, or
+logging whole request bodies. Conversely, check that sensitive endpoints **do** record an audit
+event. **Fix:** never log secrets (mask them); log security events (who did what, when).
 
 ## A10 — Server-Side Request Forgery (SSRF)
-**What it is.** The server fetches a **URL supplied by the user**, letting an attacker point it
-at internal systems or cloud metadata (exactly the Ajman `GetLiveOpenData?url=` bug).
-Vulnerable:
+**What it is.** The **server** makes an HTTP request to a **URL the user supplies**, letting an
+attacker point it at **internal** systems or the cloud **metadata** service (you found exactly
+this on Ajman: `GetLiveOpenData?url=http://localhost/` returned the internal page).
+**Vulnerable (Node), walked through:**
 ```javascript
-const data = await fetch(req.query.url)      // SSRF — server fetches attacker's URL
+const url  = req.query.url                 // (1) source: user supplies the URL
+const data = await fetch(url)              // (2) sink: server fetches whatever they asked for
+res.send(await data.text())                // (3) returns the internal response to the attacker
 ```
-**Grep:** `fetch(`, `axios.get(`, `HttpClient`, `WebClient`, `URL(`, `request(`,
-`RestTemplate`, `HttpRequestMessage` — with a **user-supplied URL** and no allow-list of
-destinations. Safe = validate the URL against an **allow-list** of permitted hosts and block
-internal/metadata ranges.
+**How to hunt it:** grep the HTTP-client sinks — `fetch(`, `axios`, `request(`, `http.get`
+(Node), `HttpClient`, `WebClient`, `RestTemplate`, `URL(...).openConnection` (Java/C#) — and
+check whether the **URL/host comes from user input**. **Confirm** there's no **allow-list** of
+permitted destinations. **Fix:** validate the URL against an **allow-list** of exact hosts,
+block private/loopback/metadata IP ranges, and don't return the raw fetched body.
 
 ---
 
 # PART 5 — METHODOLOGY & CHECKLIST
 
-# CHAPTER 15 — A repeatable code-review methodology
+# CHAPTER 16 — A repeatable code-review methodology
 
 Follow this order every time so you don't miss things and don't drown in a big codebase.
 
@@ -782,7 +1002,7 @@ That's where the critical findings almost always are. Let Black Duck/SAST cover 
 
 ---
 
-# CHAPTER 16 — Checklist & grep cheat-sheet
+# CHAPTER 17 — Checklist & grep cheat-sheet
 
 **Entry points (sources) — find where input enters:**
 ```
