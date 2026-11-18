@@ -756,6 +756,43 @@ if (acc.ownerId !== req.user.id) return res.status(403).send("forbidden")   // o
 res.json(acc)
 ```
 
+**More real examples — Java (Spring) and C# (ASP.NET):**
+
+Vulnerable (Java / Spring — IDOR, no ownership check):
+```java
+@GetMapping("/invoices/{id}")
+public Invoice getInvoice(@PathVariable Long id) {
+    return invoiceRepository.findById(id).orElseThrow();   // never checks the invoice is the caller's
+}
+```
+Fixed (Java / Spring — compare the record's owner to the logged-in user):
+```java
+@GetMapping("/invoices/{id}")
+public Invoice getInvoice(@PathVariable Long id, @AuthenticationPrincipal User user) {
+    Invoice inv = invoiceRepository.findById(id).orElseThrow();
+    if (!inv.getOwnerId().equals(user.getId()))           // ownership check
+        throw new AccessDeniedException("forbidden");
+    return inv;
+}
+```
+Vulnerable (C# / ASP.NET — admin action with no role check):
+```csharp
+[HttpDelete("users/{id}")]
+public IActionResult DeleteUser(int id) {                 // anyone logged in can delete any user
+    _users.Delete(id);
+    return Ok();
+}
+```
+Fixed (C# / ASP.NET — require the Admin role):
+```csharp
+[Authorize(Roles = "Admin")]                              // only admins reach this
+[HttpDelete("users/{id}")]
+public IActionResult DeleteUser(int id) {
+    _users.Delete(id);
+    return Ok();
+}
+```
+
 ## A02 — Cryptographic Failures (weak crypto and exposed secrets)
 **What it is.** "Cryptography" = protecting data with math. A cryptographic failure = using it
 **wrongly or weakly**. Terms you need:
@@ -789,6 +826,25 @@ ETags, file-change checks). Only flag when it protects something security-releva
 String hash = BCrypt.hashpw(password, BCrypt.gensalt());   // bcrypt — slow, salted
 ```
 and move secrets out of code into environment variables / a secrets manager.
+
+**More real examples — C# and a hardcoded secret in config:**
+
+Vulnerable (C# — weak hash + encryption key hardcoded in the source):
+```csharp
+var md5  = MD5.Create();                                   // broken algorithm
+var hash = Convert.ToHexString(md5.ComputeHash(Encoding.UTF8.GetBytes(password)));
+var key  = "A1b2C3d4E5f6G7h8";                             // hardcoded encryption key
+```
+Vulnerable (config file — a password committed into source control):
+```json
+// appsettings.json
+{ "ConnectionStrings": { "Db": "Server=db;User=sa;Password=P@ssw0rd123;" } }
+```
+Fixed (C# — strong hash + secret pulled from configuration/environment, never from code):
+```csharp
+var hash = BCrypt.Net.BCrypt.HashPassword(password);       // slow, salted
+var key  = config["Encryption:Key"];                       // loaded from env / a secrets vault
+```
 
 ## A03 — Injection: SQL, Command, and XSS (the classic source → sink bug)
 **What it is.** **Injection** = untrusted input is **glued into** a query/command/page as if it
@@ -827,6 +883,25 @@ Sequelize) are safe — **unless** code builds raw SQL strings inside them
 ```csharp
 db.Query("SELECT * FROM users WHERE name = @name", new { name });   // input sent separately
 ```
+**More real examples — Java and TypeScript:**
+
+Vulnerable (Java — concatenated SQL):
+```java
+String id = request.getParameter("id");                             // source
+Statement st = conn.createStatement();
+ResultSet rs = st.executeQuery("SELECT * FROM accounts WHERE id = " + id);   // glued → SQLi
+```
+Fixed (Java — prepared statement with a `?` placeholder):
+```java
+PreparedStatement ps = conn.prepareStatement("SELECT * FROM accounts WHERE id = ?");
+ps.setInt(1, Integer.parseInt(id));                                 // input sent separately
+ResultSet rs = ps.executeQuery();
+```
+Vulnerable → Fixed (TypeScript / Node):
+```typescript
+db.query(`SELECT * FROM users WHERE email = '${req.body.email}'`);  // glued → SQLi
+db.query("SELECT * FROM users WHERE email = $1", [req.body.email]);  // fixed: placeholder
+```
 
 ### Command injection
 **What it is.** User input reaches a call that runs an **operating-system command**, so the
@@ -838,6 +913,17 @@ exec("ping -c 1 " + req.query.host)        // host = "x; rm -rf /"  → runs rm
 `Runtime.getRuntime().exec`, `ProcessBuilder` (Java), `Process.Start`, `ProcessStartInfo`
 (C#), `os.system`. Trace the argument to a source. **Safe sign:** a fixed command with
 arguments passed as an **array** (no shell string-building), or no user input in the command.
+
+Vulnerable → Fixed (Java — pass the argument separately, no shell):
+```java
+Runtime.getRuntime().exec("nslookup " + host);     // vulnerable: host glued into a command line
+new ProcessBuilder("nslookup", host).start();      // fixed: host is a separate argument
+```
+Vulnerable → Fixed (C# — no shell, arguments as a list):
+```csharp
+Process.Start("cmd.exe", "/c ping " + host);                        // vulnerable (shell)
+Process.Start(new ProcessStartInfo("ping") { ArgumentList = { "-n", "1", host } });  // fixed
+```
 
 ### XSS (injection into the web page)
 **What it is.** Untrusted input is written into the page as **HTML/markup**, so the attacker's
@@ -854,6 +940,18 @@ element.innerHTML = location.hash                         // DOM XSS: writes raw
 **bypassed** by a sink above, and the value traces to user input.
 **Fix:** don't build HTML from input; let the framework escape it, or sanitize with DOMPurify
 if raw HTML is truly required.
+
+Vulnerable → Fixed (C# / Razor and Angular):
+```csharp
+@Html.Raw(Model.Comment)    <!-- C#/Razor — vulnerable: writes raw HTML -->
+@Model.Comment              <!-- fixed: Razor auto-encodes the value -->
+```
+```typescript
+// Angular — vulnerable: turns OFF Angular's sanitizer
+this.safeHtml = this.sanitizer.bypassSecurityTrustHtml(userInput);
+// fixed: bind as text and Angular escapes it
+// template:  <div>{{ userInput }}</div>
+```
 
 ## A04 — Insecure Design
 **What it is.** A weakness in the **logic/flow** of a feature, not a single bad line — the
@@ -888,6 +986,18 @@ profile (the main false positive here).
 **Fix:** restrict CORS to known origins, disable debug/verbose errors in production, add
 security headers, remove defaults.
 
+Vulnerable → Fixed (Java / Spring and a config file):
+```java
+@CrossOrigin(origins = "*")                        // vulnerable: any website can call this API
+@CrossOrigin(origins = "https://app.company.com")  // fixed: only the trusted origin
+```
+```properties
+# application.properties
+server.error.include-stacktrace=always   # vulnerable: full stack traces to users
+spring.profiles.active=dev               # vulnerable: dev profile in production
+server.error.include-stacktrace=never    # fixed
+```
+
 ## A06 — Vulnerable & Outdated Components  ← **this is Black Duck's job**
 **What it is.** The app uses **third-party libraries with known vulnerabilities (CVEs)** — like
 Log4Shell. The bug isn't in your team's code; it's in a library they pulled in (often
@@ -920,6 +1030,28 @@ long or absent session timeouts. **Confirm:** trace whether every protected rout
 **verifies** the token and checks expiry.
 **Fix:** `jwt.verify(token, secret)`; enforce strong passwords, lockout, and short-lived tokens.
 
+**More real examples — Java and C#:**
+```java
+// Java (jjwt) — vulnerable: parses the token without a signing key (no signature check)
+Jwts.parserBuilder().build().parse(token);
+// fixed: verify the signature with the key, and reject anything unsigned/tampered
+Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+```
+```csharp
+// C# / ASP.NET — vulnerable: signature validation disabled
+new JwtSecurityTokenHandler().ValidateToken(token, new TokenValidationParameters {
+    ValidateIssuerSigningKey = false,
+    SignatureValidator = (t, p) => new JwtSecurityToken(t)   // accepts ANY token
+}, out _);
+// fixed: validate the signing key and the token lifetime
+new TokenValidationParameters {
+    ValidateIssuerSigningKey = true, IssuerSigningKey = key, ValidateLifetime = true };
+```
+Password check — vulnerable `if (input == storedHash)` (and MD5 storage) → fixed:
+```csharp
+if (BCrypt.Net.BCrypt.Verify(input, storedHash)) { /* login ok */ }   // slow, constant-time
+```
+
 ## A08 — Software & Data Integrity Failures (incl. insecure deserialization)
 **What it is.** Trusting data or code **without checking it hasn't been tampered with**. The
 headline code bug is **insecure deserialization**: "serialization" turns an object into bytes to
@@ -936,6 +1068,17 @@ Object obj = in.readObject();      // deserializing attacker bytes → possible 
 `pickle.loads` (Python), `eval(`, and any `deserialize(` fed from a request. **Confirm** the
 input is untrusted (from the network/user). **Fix:** avoid deserializing untrusted data; use
 safe formats (plain JSON into known types); verify signatures on updates.
+
+**More real examples — C#:**
+```csharp
+// vulnerable: BinaryFormatter on attacker-controlled bytes — can run code (RCE)
+var obj = new BinaryFormatter().Deserialize(request.Body);
+// vulnerable: JSON.NET with type info enabled → object injection
+JsonConvert.DeserializeObject(json,
+    new JsonSerializerSettings { TypeNameHandling = TypeNameHandling.All });   // DANGEROUS
+// fixed: deserialize into a known, fixed type with no type-name handling
+OrderDto dto = JsonConvert.DeserializeObject<OrderDto>(json);
+```
 
 ## A09 — Security Logging & Monitoring Failures
 **What it is.** Two opposite problems: (a) **too little** — sensitive actions (login, money
@@ -965,6 +1108,23 @@ res.send(await data.text())                // (3) returns the internal response 
 check whether the **URL/host comes from user input**. **Confirm** there's no **allow-list** of
 permitted destinations. **Fix:** validate the URL against an **allow-list** of exact hosts,
 block private/loopback/metadata IP ranges, and don't return the raw fetched body.
+
+**More real examples — Java and C#:**
+```java
+// Java — vulnerable: server fetches a user-supplied URL
+String url  = request.getParameter("url");
+String body = new RestTemplate().getForObject(url, String.class);   // SSRF
+// fixed: allow-list the host before fetching
+URI u = URI.create(url);
+if (!Set.of("api.partner.com").contains(u.getHost())) throw new BadRequestException();
+```
+```csharp
+// C# — vulnerable
+var body = await new HttpClient().GetStringAsync(Request.Query["url"]);   // SSRF
+// fixed: validate against an allow-list of exact hosts
+var uri = new Uri(Request.Query["url"]);
+if (uri.Host != "api.partner.com") return BadRequest();
+```
 
 ---
 
