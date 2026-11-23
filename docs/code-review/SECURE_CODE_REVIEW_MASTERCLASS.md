@@ -192,10 +192,11 @@ grep -rniE "exec|eval|query" .  # find several dangerous words, case-insensitive
 `-E` = allow multiple patterns. You'll use grep constantly. Modern tools (VS Code's search,
 or `ripgrep`/`rg`) do the same thing faster.
 
-## 3.4 Identify what you're dealing with: language, framework & key files
+## 3.4 Identify the language and find the source files
 
-Before reading any logic, spend a few minutes working out **what the code is**. Three questions:
-**which language? which framework? where's the real source?**
+Before reading any logic, work out two things you can tell **immediately** from the files: the
+**language**, and **where the real source lives**. (Spotting the *framework* needs the idea of
+libraries/frameworks first, so that part is at the **end of Chapter 9**, once those are explained.)
 
 **1. Which language? — tell from the file extensions.**
 
@@ -209,32 +210,7 @@ Before reading any logic, spend a few minutes working out **what the code is**. 
 | `.sql` | database queries | backend |
 | `.json` `.xml` `.yml` `.properties` | config | both |
 
-**2. Which framework? — tell from the "key files".**
-Every project has a **dependency file** that lists its libraries. That one file usually tells
-you the language *and* the framework — open it first:
-
-| Key file | Language | Look inside for the framework |
-|---|---|---|
-| `package.json` | JavaScript / TypeScript | `react`, `angular`, `next`, `express`, `vue` |
-| `pom.xml` or `build.gradle` | Java | `spring-boot`, `spring-web` → Spring |
-| `*.csproj` / `*.sln` | C# / .NET | `Microsoft.AspNetCore.*` → ASP.NET |
-| `requirements.txt` / `Pipfile` | Python | `django`, `flask` |
-| `composer.json` | PHP | `laravel`, `symfony` |
-
-So in one glance you can say *"this is a C# ASP.NET backend"* or *"Angular frontend + a
-Node/Express backend."*
-
-**3. The key files you'll care about (what each one is):**
-- **Dependency files** (`package.json`, `pom.xml`, `*.csproj`) — the list of third-party
-  libraries. **This is what Black Duck scans**, and it names the framework (above).
-- **Lock files** (`package-lock.json`, `yarn.lock`) — pin the *exact* versions installed;
-  SCA tools read these for precise versions.
-- **Config files** (`.env`, `appsettings.json`, `application.properties`, `web.config`) —
-  settings and, too often, **hardcoded secrets** — grep these early (A02).
-- **Entry-point files** — the request handlers / controllers, where user input arrives.
-- **The README** — what the app does and how it's laid out; read it first.
-
-**4. Find the real source; ignore the noise.** Don't trust a folder name — find code by its
+**2. Find the real source; ignore the noise.** Don't trust a folder name — find code by its
 extension, and skip folders that aren't the app's own code:
 ```
 find . -name "*.cs"   -not -path "*/bin/*" -not -path "*/obj/*"
@@ -244,16 +220,6 @@ find . -name "*.ts"   -not -path "*/node_modules/*"
 Ignore these — they are **not** the app's own code:
 `node_modules/` (downloaded JS libraries — Black Duck's job, not manual review),
 `target/` `bin/` `obj/` (compiled output), `dist/` `build/` (built / minified output).
-
-**Your 5-minute orientation routine:**
-```
-1. Read the README           -> what does the app do? what's sensitive?
-2. Open the dependency file   -> language + framework (package.json / pom.xml / *.csproj)
-3. find . -name "*.<ext>"     -> where the real source lives (ignore node_modules/target/bin)
-4. Spot the folders           -> controllers (entry points), db access, auth, config
-5. Grep the config files      -> hardcoded secrets, debug flags, open CORS
-```
-Now you know what you're dealing with and where to look — then start the review (Chapter 16).
 
 ---
 
@@ -535,6 +501,48 @@ Next.js   → React + a server layer             → BOTH (watch pages/api & ser
 **The review takeaway:** before reading a file, identify **framework → therefore frontend or
 backend → therefore which bugs matter.** A missing auth check in backend Node/Express is
 critical; a disabled escape in frontend React/Angular is an XSS lead.
+
+## 9.5 Spotting the framework and the key files in a codebase
+
+Now that you know what a **library** and a **framework** are, here's how to find them in a real
+project — and what the important files are. (This is the "which framework?" half of the
+code-orientation we started in Chapter 3; you already know how to spot the **language** and find
+the **source files** from there.)
+
+**The dependency file is the key.** A project doesn't copy its libraries in by hand — it
+**lists** them in one **dependency file**, and a tool downloads them. That one file tells you
+both the **language** and the **framework**, so open it first.
+
+| Dependency file | Language | What to look for inside → the framework |
+|---|---|---|
+| `package.json` | JavaScript / TypeScript | `react`, `angular`, `next`, `express`, `vue` |
+| `pom.xml` or `build.gradle` | Java | `spring-boot`, `spring-web` → Spring |
+| `*.csproj` / `*.sln` | C# / .NET | `Microsoft.AspNetCore.*` → ASP.NET |
+| `requirements.txt` / `Pipfile` | Python | `django`, `flask` |
+| `composer.json` | PHP | `laravel`, `symfony` |
+
+Example: open `package.json`, see `"@angular/core"` and `"express"` → *"Angular frontend + a
+Node/Express backend."* Open `pom.xml`, see `spring-boot-starter-web` → *"Java Spring backend."*
+
+**The key files you'll care about (what each one is):**
+- **Dependency file** (`package.json` / `pom.xml` / `*.csproj`) — the list of third-party
+  libraries. **This is what Black Duck scans**, and it names the framework (above).
+- **Lock file** (`package-lock.json`, `yarn.lock`) — pins the *exact* versions installed; SCA
+  tools read it for precise versions.
+- **Config files** (`.env`, `appsettings.json`, `application.properties`, `web.config`) —
+  settings and, too often, **hardcoded secrets** — grep these early (A02).
+- **Entry-point files** — the request handlers / controllers, where user input arrives.
+- **README** — what the app does and how it's laid out; read it first.
+
+**Your 5-minute orientation routine (run it on any new codebase):**
+```
+1. Read the README           -> what does the app do? what's sensitive?
+2. Open the dependency file   -> language + framework (package.json / pom.xml / *.csproj)
+3. find . -name "*.<ext>"     -> where the real source lives (ignore node_modules/target/bin)
+4. Spot the folders           -> controllers (entry points), db access, auth, config
+5. Grep the config files      -> hardcoded secrets, debug flags, open CORS
+```
+Now you know the language, the framework, and where to look — then start the review (Chapter 16).
 
 ---
 
