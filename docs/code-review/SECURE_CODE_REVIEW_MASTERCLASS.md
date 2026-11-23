@@ -30,6 +30,56 @@ and find security bugs — the same bug classes you find in pentesting, but spot
 
 ---
 
+# HOW TO STUDY THIS BOOK — plan & flow
+
+**Read this book first, then practice on TryHackMe.** The book is the *map and method*; the
+labs are the *reps*. Pair them: read a concept here, then see it live in the matching room.
+
+## A. Learning flow (do once, in order)
+```
+1. Part 1 (Ch1-5)    Basics: programming language, frontend/backend, codebase, functions
+2. Part 2 (Ch6-9)    How to read TypeScript / Java / C# and their frameworks
+3. Part 3 (Ch10-14)  What code review is, source -> sink, SAST/SCA, Black Duck
+4. Part 4 (Ch15)     OWASP Top 10 IN CODE - every bug, all 3 languages, how to hunt
+5. Appendix B        Find-the-bug practice (10 snippets + answers)
+6. Ch18 + tools      Install & run Semgrep + Black Duck on any repo
+```
+Then practice on TryHackMe ("Web Frameworks" path), in this order:
+```
+7. Code Review room  The method + Semgrep
+8. Java room         Spring Boot  (your Java target)
+9. .NET room         ASP.NET      (your C# target)
+   skip Python & PHP;  cover TypeScript from this book's TS examples (Ch15)
+```
+
+## B. The hunting flow (use for EVERY OWASP bug while reading code)
+```
+1. GREP the sink     the dangerous op (query, command, HTML output, URL fetch, readObject)
+2. OPEN the file      read the few lines around it
+3. TRACE back         does the input come from the user? (a "source": req param/body/header)
+4. CHECK the barrier  is there a safe step? (parameterized query, access-control "if",
+                      output encoding, allow-list, signature verify)
+5. VERDICT            barrier MISSING = bug (record file:line)  ·  barrier PRESENT = safe
+```
+This one loop finds all ten — injection, broken authorization, SSRF, deserialization, everything.
+
+## C. On-the-assessment flow (repeat for each codebase)
+```
+1. Understand the app (README): what it does, what's sensitive, language/framework
+2. Run tools (they work while you read): Black Duck (deps) + Semgrep (code) + gitleaks (secrets)
+3. Find entry points (sources): grep the framework's request markers (Ch16/17)
+4. Manual review, in priority order:
+      authentication -> access control -> injection -> crypto/secrets -> SSRF / deserialization / config
+5. Apply the hunting flow (B) to each sink
+6. Triage every tool finding: open file:line, confirm real vs false positive
+7. Write the finding (Appendix C template): title - severity - OWASP/CWE - file:line - fix
+```
+
+**One line to remember:** *read the concept here -> see it live in the matching TryHackMe room
+-> hunt with the 5-step loop.*
+
+---
+
 # PART 1 — FOUNDATIONS
 
 # CHAPTER 1 — What is a programming language?
